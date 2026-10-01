@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, ArrowRight, Lock, User, Mail, ChevronDown, CheckCircle2 } from 'lucide-react';
+import { X, ArrowRight, Lock, User, Mail, LogIn, CheckCircle2, UserCheck } from 'lucide-react';
 import { UserAccount } from '../lib/authService';
 
 export type SocialProvider = 'google' | 'facebook' | 'github';
@@ -12,6 +12,11 @@ interface SocialAuthPopupModalProps {
   onSuccess: (account: UserAccount) => void;
 }
 
+interface SavedSocialAccount {
+  displayName: string;
+  email: string;
+}
+
 export function SocialAuthPopupModal({
   isOpen,
   provider,
@@ -20,13 +25,46 @@ export function SocialAuthPopupModal({
 }: SocialAuthPopupModalProps) {
   const [accountEmail, setAccountEmail] = useState('');
   const [accountName, setAccountName] = useState('');
-  const [showManualForm, setShowManualForm] = useState(false);
+  const [existingAccount, setExistingAccount] = useState<SavedSocialAccount | null>(null);
+  const [isSwitchingAccount, setIsSwitchingAccount] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // Check if customer already signed into this provider previously
+  useEffect(() => {
+    if (!isOpen || !provider) {
+      setExistingAccount(null);
+      setIsSwitchingAccount(false);
+      setAccountEmail('');
+      setAccountName('');
+      setValidationError(null);
+      return;
+    }
+
+    try {
+      const stored = localStorage.getItem(`ad_dmc_${provider}_saved_session`);
+      if (stored) {
+        const parsed = JSON.parse(stored) as SavedSocialAccount;
+        if (parsed && parsed.email) {
+          setExistingAccount(parsed);
+          setIsSwitchingAccount(false);
+          return;
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    // Otherwise, ask them to sign in
+    setExistingAccount(null);
+    setIsSwitchingAccount(true);
+    setAccountEmail('');
+    setAccountName('');
+  }, [isOpen, provider]);
+
   if (!isOpen || !provider) return null;
 
-  // Provider branding & defaults
+  // Provider branding & titles (no hardcoded user credentials)
   const getProviderInfo = () => {
     switch (provider) {
       case 'google':
@@ -36,8 +74,6 @@ export function SocialAuthPopupModal({
           subheading: 'Asia Destination DMC will receive your name, profile picture and email address',
           providerName: 'Google',
           brandColor: '#4285F4',
-          defaultName: 'Phaophonna',
-          defaultEmail: 'phaophonna@gmail.com',
           logo: (
             <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
               <path
@@ -66,8 +102,6 @@ export function SocialAuthPopupModal({
           subheading: 'Asia Destination DMC will receive your Facebook name, profile picture and email address',
           providerName: 'Facebook',
           brandColor: '#1877F2',
-          defaultName: 'Phaophonna',
-          defaultEmail: 'phaophonna@gmail.com',
           logo: (
             <svg className="w-5 h-5 shrink-0 text-[#1877F2] fill-current" viewBox="0 0 24 24">
               <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
@@ -81,8 +115,6 @@ export function SocialAuthPopupModal({
           subheading: 'Asia Destination DMC wants to access your GitHub account identity and email',
           providerName: 'GitHub',
           brandColor: '#24292F',
-          defaultName: 'Phaophonna',
-          defaultEmail: 'phaophonna@gmail.com',
           logo: (
             <svg className="w-5 h-5 shrink-0 fill-current text-white" viewBox="0 0 24 24">
               <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
@@ -94,17 +126,30 @@ export function SocialAuthPopupModal({
 
   const info = getProviderInfo();
 
-  // Instant 1-Click authorization handler
-  const handleAuthorizeAccount = (chosenName: string, chosenEmail: string) => {
+  // Authorize and remember this customer's social account
+  const executeLogin = (name: string, email: string) => {
     setLoading(true);
     setValidationError(null);
+
+    const cleanEmail = email.toLowerCase().trim();
+    const cleanName = name.trim() || cleanEmail.split('@')[0];
+
+    // Save so next time it loads their actual Facebook/Google account
+    try {
+      localStorage.setItem(
+        `ad_dmc_${provider}_saved_session`,
+        JSON.stringify({ displayName: cleanName, email: cleanEmail })
+      );
+    } catch {
+      // ignore
+    }
 
     setTimeout(() => {
       setLoading(false);
       const userAccount: UserAccount = {
         uid: `${provider}-${Date.now()}`,
-        email: chosenEmail.toLowerCase().trim(),
-        displayName: chosenName.trim(),
+        email: cleanEmail,
+        displayName: cleanName,
         provider: provider,
         role: 'customer',
         isDefaultSuperAdmin: false,
@@ -116,17 +161,17 @@ export function SocialAuthPopupModal({
     }, 400);
   };
 
-  const handleManualSubmit = (e: React.FormEvent) => {
+  const handleManualSignInSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const finalEmail = accountEmail.trim();
-    const finalName = accountName.trim();
+    const trimmedEmail = accountEmail.trim();
+    const trimmedName = accountName.trim();
 
-    if (!finalEmail || !finalEmail.includes('@')) {
-      setValidationError(`Please enter a valid ${info.providerName} email address.`);
+    if (!trimmedEmail || !trimmedEmail.includes('@')) {
+      setValidationError(`Please enter your valid ${info.providerName} email address or account.`);
       return;
     }
 
-    handleAuthorizeAccount(finalName || finalEmail.split('@')[0], finalEmail);
+    executeLogin(trimmedName || trimmedEmail.split('@')[0], trimmedEmail);
   };
 
   return (
@@ -182,92 +227,107 @@ export function SocialAuthPopupModal({
 
           {/* Body Content */}
           <div className="p-6 space-y-4">
-            {/* ONE-CLICK AUTHENTICATION BUTTON */}
-            <div className="space-y-2">
-              <span className="text-[11px] font-semibold text-stone-400 block uppercase tracking-wider">
-                Click below to sign in:
-              </span>
+            {/* SCENARIO 1: Customer ALREADY signed in to Facebook/Social - Load THEIR account */}
+            {existingAccount && !isSwitchingAccount ? (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-xs text-emerald-400 font-semibold uppercase tracking-wider">
+                  <UserCheck className="w-4 h-4" />
+                  <span>Signed in on {info.providerName}</span>
+                </div>
 
-              <button
-                type="button"
-                disabled={loading}
-                onClick={() => handleAuthorizeAccount(info.defaultName, info.defaultEmail)}
-                className="w-full flex items-center justify-between p-4 rounded-xl bg-stone-950 hover:bg-stone-850 border border-amber-400/40 hover:border-amber-400 transition-all cursor-pointer text-left group shadow-lg"
-              >
-                <div className="flex items-center gap-3.5">
-                  <div className="w-11 h-11 rounded-full bg-amber-400 text-stone-950 font-bold flex items-center justify-center text-base shadow shrink-0">
-                    {info.defaultName.charAt(0)}
+                {/* Primary Continue Button */}
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => executeLogin(existingAccount.displayName, existingAccount.email)}
+                  className="w-full flex items-center justify-between p-4 rounded-xl bg-stone-950 hover:bg-stone-850 border border-emerald-500/50 hover:border-emerald-400 transition-all cursor-pointer text-left group shadow-lg"
+                >
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-11 h-11 rounded-full bg-[#1877F2] text-white font-bold flex items-center justify-center text-base shadow shrink-0">
+                      {existingAccount.displayName.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <span className="text-sm font-bold text-white block group-hover:text-amber-400 transition-colors">
+                        Continue as {existingAccount.displayName}
+                      </span>
+                      <span className="text-xs text-stone-300 font-mono block">
+                        {existingAccount.email}
+                      </span>
+                      <span className="text-[10px] text-emerald-400 flex items-center gap-1 mt-0.5 font-medium">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                        Active {info.providerName} Account
+                      </span>
+                    </div>
                   </div>
+
+                  <div className="px-3 py-1.5 rounded-lg bg-emerald-500 text-stone-950 text-xs font-bold group-hover:bg-emerald-400 transition-colors flex items-center gap-1 shrink-0 shadow">
+                    <span>{loading ? 'Authorizing...' : 'Log In'}</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </div>
+                </button>
+
+                <div className="pt-2 text-center border-t border-stone-800">
+                  <button
+                    type="button"
+                    onClick={() => setIsSwitchingAccount(true)}
+                    className="text-xs text-stone-400 hover:text-white underline cursor-pointer"
+                  >
+                    Log into another {info.providerName} account
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* SCENARIO 2: Customer NOT signed in yet - Ask them to sign in */
+              <div className="space-y-4">
+                <div className="p-3 bg-stone-950/70 border border-stone-800 rounded-xl text-xs text-stone-300 flex items-start gap-2.5">
+                  <LogIn className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                   <div>
-                    <span className="text-sm font-bold text-white block group-hover:text-amber-400 transition-colors">
-                      Continue as {info.defaultName}
-                    </span>
-                    <span className="text-xs text-stone-300 font-mono block">
-                      {info.defaultEmail}
-                    </span>
-                    <span className="text-[10px] text-emerald-400 flex items-center gap-1 mt-0.5 font-medium">
-                      <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                      1-Click Sign In with {info.providerName}
+                    <strong className="text-white block mb-0.5">
+                      Log In to {info.providerName}
+                    </strong>
+                    <span className="text-[11px] text-stone-400">
+                      Please enter your {info.providerName} account details to authenticate and connect with Asia Destination DMC.
                     </span>
                   </div>
                 </div>
 
-                <div className="px-3 py-1.5 rounded-lg bg-amber-400 text-stone-950 text-xs font-bold group-hover:bg-amber-300 transition-colors flex items-center gap-1 shrink-0 shadow">
-                  <span>{loading ? 'Signing in...' : 'Sign In'}</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </div>
-              </button>
-            </div>
-
-            {/* Optional: Sign in with another account toggle */}
-            <div className="pt-2 border-t border-stone-800/80">
-              <button
-                type="button"
-                onClick={() => setShowManualForm(!showManualForm)}
-                className="w-full py-1 text-xs text-stone-400 hover:text-white flex items-center justify-center gap-1 transition-colors cursor-pointer"
-              >
-                <span>Or sign in with a different {info.providerName} account</span>
-                <ChevronDown
-                  className={`w-3.5 h-3.5 transition-transform ${showManualForm ? 'rotate-180' : ''}`}
-                />
-              </button>
-
-              {showManualForm && (
-                <form onSubmit={handleManualSubmit} className="mt-3 space-y-3 pt-2">
+                <form onSubmit={handleManualSignInSubmit} className="space-y-3">
                   <div>
                     <label className="block text-[11px] text-stone-400 mb-1">
-                      {info.providerName} Full Name
+                      {info.providerName} Email or Phone *
                     </label>
                     <div className="relative">
-                      <User className="w-3.5 h-3.5 text-stone-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <Mail className="w-3.5 h-3.5 text-stone-500 absolute left-3 top-1/2 -translate-y-1/2" />
                       <input
                         type="text"
-                        placeholder="e.g. Phaophonna"
-                        value={accountName}
+                        required
+                        placeholder={`Your ${info.providerName} email or mobile`}
+                        value={accountEmail}
                         onChange={(e) => {
-                          setAccountName(e.target.value);
+                          setAccountEmail(e.target.value);
                           setValidationError(null);
                         }}
-                        className="w-full pl-9 pr-3 py-2 bg-stone-950 border border-stone-800 rounded-lg text-xs text-white placeholder-stone-600 focus:outline-none focus:border-amber-400"
+                        className="w-full pl-9 pr-3 py-2.5 bg-stone-950 border border-stone-800 rounded-xl text-xs text-white placeholder-stone-600 focus:outline-none focus:border-amber-400"
                       />
                     </div>
                   </div>
 
                   <div>
                     <label className="block text-[11px] text-stone-400 mb-1">
-                      {info.providerName} Email Address
+                      {info.providerName} Account Name *
                     </label>
                     <div className="relative">
-                      <Mail className="w-3.5 h-3.5 text-stone-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <User className="w-3.5 h-3.5 text-stone-500 absolute left-3 top-1/2 -translate-y-1/2" />
                       <input
-                        type="email"
-                        placeholder={`e.g. ${info.defaultEmail}`}
-                        value={accountEmail}
+                        type="text"
+                        required
+                        placeholder={`Your name on ${info.providerName}`}
+                        value={accountName}
                         onChange={(e) => {
-                          setAccountEmail(e.target.value);
+                          setAccountName(e.target.value);
                           setValidationError(null);
                         }}
-                        className="w-full pl-9 pr-3 py-2 bg-stone-950 border border-stone-800 rounded-lg text-xs text-white placeholder-stone-600 focus:outline-none focus:border-amber-400"
+                        className="w-full pl-9 pr-3 py-2.5 bg-stone-950 border border-stone-800 rounded-xl text-xs text-white placeholder-stone-600 focus:outline-none focus:border-amber-400"
                       />
                     </div>
                   </div>
@@ -281,14 +341,26 @@ export function SocialAuthPopupModal({
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full py-2.5 bg-stone-800 hover:bg-stone-700 text-white text-xs font-bold rounded-lg transition-colors cursor-pointer shadow flex items-center justify-center gap-1.5"
+                    className="w-full py-3 bg-[#1877F2] hover:bg-[#166fe5] text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-lg shadow-blue-500/20 flex items-center justify-center gap-1.5 mt-2"
                   >
-                    <span>Log In with this Account</span>
+                    <span>{loading ? 'Connecting...' : `Log In to ${info.providerName}`}</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
+
+                  {existingAccount && (
+                    <div className="text-center pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setIsSwitchingAccount(false)}
+                        className="text-xs text-stone-400 hover:text-white"
+                      >
+                        ← Back to saved account ({existingAccount.email})
+                      </button>
+                    </div>
+                  )}
                 </form>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </motion.div>
       </div>

@@ -72,10 +72,8 @@ export function AuthModal({ isOpen, onClose, defaultRole = 'customer' }: AuthMod
     setIsOtpSent(false);
     setGeneratedOtpDisplay(null);
     setOtpCode('');
-    if (newMode === 'admin_login' && !email) {
-      setEmail(DEFAULT_SUPER_ADMIN_EMAIL);
-      setPassword('admin12345');
-    }
+    setEmail('');
+    setPassword('');
   };
 
   // 1. Customer Sign In
@@ -573,10 +571,10 @@ export function AuthModal({ isOpen, onClose, defaultRole = 'customer' }: AuthMod
             <form onSubmit={handleAdminLogin} className="space-y-4">
               <div className="bg-amber-400/10 border border-amber-400/30 rounded-xl p-3 text-left">
                 <div className="flex items-center gap-1.5 text-amber-400 font-bold text-xs mb-1">
-                  <ShieldCheck className="w-4 h-4" /> Protected Administrator Access
+                  <ShieldCheck className="w-4 h-4" /> Protected Administrator Portal
                 </div>
                 <p className="text-[11px] text-stone-300 leading-relaxed">
-                  Default Super Admin: <strong className="text-white">phaophonna.1@gmail.com</strong> (Protected from deletion). Secondary admins must be created by the default admin.
+                  Authorized personnel only. Please enter your administrator email address and password to access the console.
                 </p>
               </div>
 
@@ -587,9 +585,10 @@ export function AuthModal({ isOpen, onClose, defaultRole = 'customer' }: AuthMod
                   <input
                     type="email"
                     required
+                    placeholder="admin@asiadestination.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2.5 bg-stone-950 border border-stone-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400 font-mono"
+                    className="w-full pl-9 pr-3 py-2.5 bg-stone-950 border border-stone-800 rounded-xl text-xs text-white placeholder-stone-600 focus:outline-none focus:border-amber-400 font-mono"
                   />
                 </div>
               </div>
@@ -610,9 +609,10 @@ export function AuthModal({ isOpen, onClose, defaultRole = 'customer' }: AuthMod
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
+                    placeholder="••••••••"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-9 pr-10 py-2.5 bg-stone-950 border border-stone-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+                    className="w-full pl-9 pr-10 py-2.5 bg-stone-950 border border-stone-800 rounded-xl text-xs text-white placeholder-stone-600 focus:outline-none focus:border-amber-400"
                   />
                   <button
                     type="button"
