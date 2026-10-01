@@ -90,9 +90,10 @@ export function Navbar({
             {user && (
               <button
                 onClick={onOpenCustomerDashboard}
-                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-stone-900 hover:bg-stone-800 text-stone-200 border border-stone-800 hover:border-amber-400/40 rounded-lg text-xs font-medium transition-colors cursor-pointer"
+                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-stone-900 hover:bg-stone-800 text-stone-200 border border-stone-800 hover:border-amber-400/40 rounded-lg text-xs font-medium transition-colors cursor-pointer"
               >
-                <Calendar className="w-3.5 h-3.5 text-amber-400" /> My Bookings
+                <Calendar className="w-3.5 h-3.5 text-amber-400" />
+                <span className="hidden sm:inline">My Bookings</span>
               </button>
             )}
 
@@ -108,10 +109,10 @@ export function Navbar({
 
             {/* User Auth trigger */}
             {user ? (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2">
                 <button
                   onClick={isAdmin ? onOpenAdminDashboard : onOpenCustomerDashboard}
-                  className="hidden md:flex items-center gap-2 px-3 py-1.5 text-xs text-stone-200 hover:text-white bg-stone-900/90 hover:bg-stone-850 rounded-xl border border-stone-800 hover:border-amber-400/40 transition-colors cursor-pointer text-left shadow-sm"
+                  className="flex items-center gap-2 px-2.5 sm:px-3 py-1.5 text-xs text-stone-200 hover:text-white bg-stone-900/90 hover:bg-stone-850 rounded-xl border border-amber-400/30 hover:border-amber-400 transition-colors cursor-pointer text-left shadow-sm"
                   title={`Signed in as ${user.displayName} (${user.email})`}
                 >
                   {/* Provider icon or initial */}
@@ -139,16 +140,16 @@ export function Navbar({
                   {/* Name and Email */}
                   <div className="flex flex-col">
                     <div className="flex items-center gap-1.5">
-                      <span className="font-semibold text-white max-w-[120px] truncate leading-tight">
+                      <span className="font-semibold text-white max-w-[90px] sm:max-w-[130px] truncate leading-tight">
                         {user.displayName}
                       </span>
                       {user.provider && (
-                        <span className="text-[9px] uppercase px-1 rounded bg-stone-800 text-stone-400 font-mono">
+                        <span className="text-[9px] uppercase px-1 rounded bg-stone-800 text-amber-400 font-mono">
                           {user.provider}
                         </span>
                       )}
                     </div>
-                    <span className="text-[10px] text-stone-400 font-mono max-w-[140px] truncate leading-tight">
+                    <span className="text-[10px] text-stone-400 font-mono max-w-[110px] sm:max-w-[150px] truncate leading-tight">
                       {user.email}
                     </span>
                   </div>
