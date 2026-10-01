@@ -464,3 +464,11 @@ export async function loginWithProvider(
     return authorizedUser;
   }
 }
+
+export async function signOutAuth(): Promise<void> {
+  try {
+    await fbSignOut(auth);
+  } catch (err) {
+    console.warn('fbSignOut error:', err);
+  }
+}

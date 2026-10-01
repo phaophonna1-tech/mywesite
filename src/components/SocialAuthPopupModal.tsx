@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, ShieldCheck, Check, ArrowRight, Lock, ExternalLink, AlertCircle, User, Mail } from 'lucide-react';
+import { X, Check, ArrowRight, Lock, User, Mail, LogIn, RefreshCw } from 'lucide-react';
 import { UserAccount } from '../lib/authService';
+import { useAuth } from '../context/AuthContext';
 
 export type SocialProvider = 'google' | 'facebook' | 'github';
 
@@ -18,22 +19,23 @@ export function SocialAuthPopupModal({
   onClose,
   onSuccess,
 }: SocialAuthPopupModalProps) {
+  const { user: currentSignedInUser } = useAuth();
   const [accountEmail, setAccountEmail] = useState('');
   const [accountName, setAccountName] = useState('');
+  const [validationError, setValidationError] = useState<string | null>(null);
   const [step, setStep] = useState<'choose' | 'authorize'>('choose');
   const [loading, setLoading] = useState(false);
 
   if (!isOpen || !provider) return null;
 
-  // Defaults per provider
+  // Provider configuration
   const getProviderInfo = () => {
     switch (provider) {
       case 'google':
         return {
           title: 'Google Accounts',
           heading: 'Sign in with Google',
-          subheading: 'Choose your Google account to authorize Asia Destination DMC',
-          accentColor: '#4285F4',
+          subheading: 'Asia Destination DMC will receive your name, email address, and profile picture',
           providerName: 'Google',
           logo: (
             <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
@@ -60,17 +62,12 @@ export function SocialAuthPopupModal({
             'Primary Google Account email address',
             'Connect and sync personalized itinerary bookings',
           ],
-          defaultAccount: {
-            name: 'Phaophonna',
-            email: 'phaophonna@gmail.com',
-          },
         };
       case 'facebook':
         return {
           title: 'Facebook Login',
           heading: 'Log in with Facebook',
           subheading: 'Asia Destination DMC will receive your Facebook name, profile picture and email address',
-          accentColor: '#1877F2',
           providerName: 'Facebook',
           logo: (
             <svg className="w-5 h-5 shrink-0 text-[#1877F2] fill-current" viewBox="0 0 24 24">
@@ -80,18 +77,14 @@ export function SocialAuthPopupModal({
           permissions: [
             'Public Facebook Profile (Name and avatar)',
             'Verified email address linked to your Facebook account',
+            'Sync bespoke itineraries with customer travel portal',
           ],
-          defaultAccount: {
-            name: 'Phaophonna',
-            email: 'phaophonna@gmail.com',
-          },
         };
       case 'github':
         return {
           title: 'GitHub Authorization',
           heading: 'Authorize Asia Destination DMC',
           subheading: 'Asia Destination DMC wants to access your GitHub account identity and email',
-          accentColor: '#24292F',
           providerName: 'GitHub',
           logo: (
             <svg className="w-5 h-5 shrink-0 fill-current text-white" viewBox="0 0 24 24">
@@ -102,30 +95,44 @@ export function SocialAuthPopupModal({
             'Read-only access to user profile information (Name, handle, avatar)',
             'Read-only access to verified GitHub email address',
           ],
-          defaultAccount: {
-            name: 'Phaophonna',
-            email: 'phaophonna@gmail.com',
-          },
         };
     }
   };
 
   const info = getProviderInfo();
 
+  // If a user is currently signed in with this provider, they can continue with their active session
+  const hasCurrentActiveAccount = !!(currentSignedInUser && currentSignedInUser.email);
+
   const handleSelectAccount = (selectedName: string, selectedEmail: string) => {
     setAccountName(selectedName);
     setAccountEmail(selectedEmail);
+    setValidationError(null);
     setStep('authorize');
+  };
+
+  const handleCustomSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmedEmail = accountEmail.trim();
+    const trimmedName = accountName.trim();
+
+    if (!trimmedEmail || !trimmedEmail.includes('@')) {
+      setValidationError(`Please enter a valid ${info.providerName} email address.`);
+      return;
+    }
+
+    const finalName = trimmedName || trimmedEmail.split('@')[0];
+    handleSelectAccount(finalName, trimmedEmail);
   };
 
   const handleAuthorize = () => {
     setLoading(true);
     setTimeout(() => {
       setLoading(false);
-      const chosenEmail = (accountEmail.trim() || info.defaultAccount.email).toLowerCase();
-      const chosenName = accountName.trim() || (accountEmail.trim() && accountEmail.includes('@') ? accountEmail.split('@')[0] : info.defaultAccount.name);
+      const chosenEmail = accountEmail.trim().toLowerCase();
+      const chosenName = accountName.trim() || chosenEmail.split('@')[0];
 
-      // Customer third-party sign-in is ALWAYS customer role with non-admin privileges
+      // Social customer sign-in establishes customer session
       const userAccount: UserAccount = {
         uid: `${provider}-${Date.now()}`,
         email: chosenEmail,
@@ -196,94 +203,124 @@ export function SocialAuthPopupModal({
           <div className="p-6 space-y-5">
             {step === 'choose' ? (
               <div className="space-y-4">
-                <span className="text-xs font-semibold text-stone-400 block uppercase tracking-wider">
-                  Select an account to sign in:
-                </span>
-
-                {/* Primary Customer Account Card */}
-                <button
-                  onClick={() => handleSelectAccount(info.defaultAccount.name, info.defaultAccount.email)}
-                  className="w-full flex items-center justify-between p-3.5 rounded-xl bg-stone-950 hover:bg-stone-800/90 border border-stone-800 hover:border-amber-400/40 transition-all cursor-pointer text-left group"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-amber-400 text-stone-950 font-bold flex items-center justify-center text-sm shadow">
-                      {info.defaultAccount.name.charAt(0)}
-                    </div>
-                    <div>
-                      <span className="text-xs font-bold text-white block group-hover:text-amber-400 transition-colors">
-                        {info.defaultAccount.name}
-                      </span>
-                      <span className="text-xs text-stone-400 font-mono block">
-                        {info.defaultAccount.email}
-                      </span>
-                      <span className="text-[10px] text-amber-400/90 flex items-center gap-1 mt-0.5">
-                        <Check className="w-3 h-3 text-emerald-400" /> Customer {info.providerName} Account
+                {/* 1. If an account is currently signed in on this app, display it */}
+                {hasCurrentActiveAccount ? (
+                  <div className="space-y-3">
+                    <span className="text-xs font-semibold text-stone-400 block uppercase tracking-wider">
+                      Current Signed-in Account:
+                    </span>
+                    <button
+                      onClick={() => handleSelectAccount(currentSignedInUser!.displayName, currentSignedInUser!.email)}
+                      className="w-full flex items-center justify-between p-3.5 rounded-xl bg-stone-950 hover:bg-stone-800/90 border border-emerald-500/40 hover:border-amber-400 transition-all cursor-pointer text-left group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-emerald-500 text-stone-950 font-bold flex items-center justify-center text-sm shadow">
+                          {currentSignedInUser!.displayName.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <span className="text-xs font-bold text-white block group-hover:text-amber-400 transition-colors">
+                            {currentSignedInUser!.displayName}
+                          </span>
+                          <span className="text-xs text-stone-400 font-mono block">
+                            {currentSignedInUser!.email}
+                          </span>
+                          <span className="text-[10px] text-emerald-400 flex items-center gap-1 mt-0.5 font-medium">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                            Currently Active Session
+                          </span>
+                        </div>
+                      </div>
+                      <ArrowRight className="w-4 h-4 text-stone-500 group-hover:text-amber-400 transition-colors" />
+                    </button>
+                    <div className="pt-2 text-center">
+                      <span className="text-xs text-stone-500 font-medium">
+                        Or sign in to a different {info.providerName} account below:
                       </span>
                     </div>
                   </div>
-                  <ArrowRight className="w-4 h-4 text-stone-500 group-hover:text-amber-400 transition-colors" />
-                </button>
+                ) : (
+                  /* 2. When user is signed out: do NOT list signed-out accounts! Prompt for current sign-in */
+                  <div className="mb-2 p-3 bg-stone-950/70 border border-stone-800 rounded-xl text-xs text-stone-300">
+                    <div className="flex items-center gap-2 mb-1">
+                      <LogIn className="w-4 h-4 text-amber-400" />
+                      <strong className="text-white">Sign In to Your {info.providerName} Account</strong>
+                    </div>
+                    <p className="text-[11px] text-stone-400">
+                      No account currently signed in. Enter your active {info.providerName} account credentials to authenticate.
+                    </p>
+                  </div>
+                )}
 
-                {/* Or Custom Account Form */}
-                <div className="pt-3 border-t border-stone-800/80 space-y-3">
-                  <span className="text-xs text-stone-400 block font-medium">
-                    Or sign in with another {info.providerName} account:
-                  </span>
-                  
+                {/* Account Credentials Form */}
+                <form onSubmit={handleCustomSubmit} className="space-y-3">
                   <div>
-                    <label className="block text-[11px] text-stone-500 mb-1">Your {info.providerName} Full Name</label>
+                    <label className="block text-[11px] text-stone-400 mb-1">
+                      Your {info.providerName} Full Name *
+                    </label>
                     <div className="relative">
                       <User className="w-3.5 h-3.5 text-stone-500 absolute left-3 top-1/2 -translate-y-1/2" />
                       <input
                         type="text"
+                        required
                         placeholder="e.g. Phaophonna"
                         value={accountName}
-                        onChange={(e) => setAccountName(e.target.value)}
+                        onChange={(e) => {
+                          setAccountName(e.target.value);
+                          setValidationError(null);
+                        }}
                         className="w-full pl-9 pr-3 py-2 bg-stone-950 border border-stone-800 rounded-lg text-xs text-white placeholder-stone-600 focus:outline-none focus:border-amber-400"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-[11px] text-stone-500 mb-1">Your {info.providerName} Email Address</label>
+                    <label className="block text-[11px] text-stone-400 mb-1">
+                      Your {info.providerName} Email Address *
+                    </label>
                     <div className="relative">
                       <Mail className="w-3.5 h-3.5 text-stone-500 absolute left-3 top-1/2 -translate-y-1/2" />
                       <input
                         type="email"
-                        placeholder={`your.account@${provider === 'google' ? 'gmail.com' : 'example.com'}`}
+                        required
+                        placeholder="e.g. phaophonna@gmail.com"
                         value={accountEmail}
-                        onChange={(e) => setAccountEmail(e.target.value)}
+                        onChange={(e) => {
+                          setAccountEmail(e.target.value);
+                          setValidationError(null);
+                        }}
                         className="w-full pl-9 pr-3 py-2 bg-stone-950 border border-stone-800 rounded-lg text-xs text-white placeholder-stone-600 focus:outline-none focus:border-amber-400"
                       />
                     </div>
                   </div>
 
+                  {validationError && (
+                    <div className="p-2 rounded bg-rose-950/50 border border-rose-500/30 text-rose-300 text-[11px]">
+                      {validationError}
+                    </div>
+                  )}
+
                   <button
-                    onClick={() => {
-                      const finalEmail = accountEmail.trim() || info.defaultAccount.email;
-                      const finalName = accountName.trim() || (accountEmail.trim() && accountEmail.includes('@') ? accountEmail.split('@')[0] : info.defaultAccount.name);
-                      handleSelectAccount(finalName, finalEmail);
-                    }}
-                    className="w-full py-2.5 bg-amber-400 hover:bg-amber-300 text-stone-950 text-xs font-bold rounded-lg transition-colors cursor-pointer shadow-md flex items-center justify-center gap-1.5"
+                    type="submit"
+                    className="w-full py-2.5 bg-amber-400 hover:bg-amber-300 text-stone-950 text-xs font-bold rounded-lg transition-colors cursor-pointer shadow-md flex items-center justify-center gap-1.5 mt-2"
                   >
-                    <span>Continue with this {info.providerName} Account</span>
+                    <span>Sign In & Continue with {info.providerName}</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
-                </div>
+                </form>
               </div>
             ) : (
               /* Step 2: Permission Authorization and Consent screen */
               <div className="space-y-4 text-left">
                 <div className="bg-stone-950 p-4 rounded-xl border border-stone-800 flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-amber-400 text-stone-950 font-bold flex items-center justify-center text-sm shadow">
-                    {(accountName || 'P').charAt(0)}
+                    {(accountName || 'P').charAt(0).toUpperCase()}
                   </div>
                   <div>
                     <span className="text-xs font-bold text-white block">
-                      {accountName || info.defaultAccount.name}
+                      {accountName}
                     </span>
                     <span className="text-xs text-amber-400 font-mono block">
-                      {accountEmail || info.defaultAccount.email}
+                      {accountEmail}
                     </span>
                     <span className="text-[10px] text-stone-500 uppercase tracking-wider block mt-0.5">
                       Customer Profile • Verified via {info.providerName}
@@ -323,7 +360,7 @@ export function SocialAuthPopupModal({
                     onClick={handleAuthorize}
                     className="w-2/3 py-2.5 bg-amber-400 hover:bg-amber-300 text-stone-950 font-bold text-xs rounded-xl transition-all cursor-pointer shadow-lg shadow-amber-400/20 flex items-center justify-center gap-1.5"
                   >
-                    {loading ? 'Signing in...' : 'Allow & Accept'}
+                    {loading ? 'Authorizing...' : 'Allow & Accept'}
                   </button>
                 </div>
               </div>

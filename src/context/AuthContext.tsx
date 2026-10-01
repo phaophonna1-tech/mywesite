@@ -10,7 +10,8 @@ import {
   resetUserPassword,
   createSecondaryAdmin,
   deleteSecondaryAdmin,
-  loginWithProvider
+  loginWithProvider,
+  signOutAuth
 } from '../lib/authService';
 
 interface AuthContextType {
@@ -118,6 +119,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signOutUser = async () => {
     setUser(null);
     localStorage.removeItem('ad_dmc_active_session');
+    await signOutAuth();
   };
 
   const isAdmin = user?.role === 'admin' || user?.email.toLowerCase() === DEFAULT_SUPER_ADMIN_EMAIL.toLowerCase();
