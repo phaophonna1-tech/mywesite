@@ -50,7 +50,8 @@ import {
   UserAccount, 
   updateCustomerStatus, 
   deleteCustomerUser, 
-  updateCustomerProfile 
+  updateCustomerProfile,
+  clearAllCustomerUsers
 } from '../lib/authService';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -92,13 +93,15 @@ export function AdminDashboard({ isOpen, onClose, onDestinationsUpdated }: Admin
   const [expandedCustomerId, setExpandedCustomerId] = useState<string | null>(null);
   const [copiedCustomerEmail, setCopiedCustomerEmail] = useState<string | null>(null);
 
-  // Customer Management Modals (Active, Inactive, Delete, Edit)
+  // Customer Management Modals (Active, Inactive, Delete, Edit, Clear All)
   const [customerToDelete, setCustomerToDelete] = useState<CustomerData | null>(null);
   const [customerToEdit, setCustomerToEdit] = useState<CustomerData | null>(null);
+  const [showClearConfirmModal, setShowClearConfirmModal] = useState(false);
   const [editCustomerName, setEditCustomerName] = useState('');
   const [editCustomerPhone, setEditCustomerPhone] = useState('');
   const [editCustomerStatus, setEditCustomerStatus] = useState<'active' | 'inactive'>('active');
   const [isProcessingCustomer, setIsProcessingCustomer] = useState(false);
+  const [isClearingAllCustomers, setIsClearingAllCustomers] = useState(false);
 
   // Destinations Management state
   const [destinationsList, setDestinationsList] = useState<Destination[]>([]);
@@ -329,6 +332,22 @@ export function AdminDashboard({ isOpen, onClose, onDestinationsUpdated }: Admin
       alert(err?.message || 'Failed to update customer details');
     } finally {
       setIsProcessingCustomer(false);
+    }
+  };
+
+  // Clear all customer users (All Admins)
+  const handleConfirmClearAllCustomers = async () => {
+    setIsClearingAllCustomers(true);
+    try {
+      await clearAllCustomerUsers();
+      setCustomersList([]);
+      setStatusActionSuccess('All customer users and profiles have been successfully cleared.');
+      setShowClearConfirmModal(false);
+      refreshCustomers([]);
+    } catch (err: any) {
+      alert(err?.message || 'Failed to clear customer users');
+    } finally {
+      setIsClearingAllCustomers(false);
     }
   };
 
@@ -1087,9 +1106,22 @@ export function AdminDashboard({ isOpen, onClose, onDestinationsUpdated }: Admin
                       All administrators have full authority to view all registered customers, social identity providers (Facebook, Google, Email), verified identities, contact phone numbers, and luxury journey booking histories across Asia Destination DMC.
                     </p>
                   </div>
-                  <div className="px-3.5 py-1.5 rounded-lg bg-amber-400/10 border border-amber-400/30 text-amber-300 font-mono text-xs shrink-0 flex items-center gap-1.5">
-                    <ShieldCheck className="w-4 h-4 text-amber-400" />
-                    <span>Admin Visibility: Full Access</span>
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    <div className="px-3 py-1.5 rounded-lg bg-amber-400/10 border border-amber-400/30 text-amber-300 font-mono text-xs flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-amber-400" />
+                      <span>Admin Full Access</span>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={isClearingAllCustomers || customersList.length === 0}
+                      onClick={() => setShowClearConfirmModal(true)}
+                      className="px-3 py-1.5 rounded-lg bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/40 text-rose-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow"
+                      title="Clear all customer user accounts"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                      <span>Clear All Customers</span>
+                    </button>
                   </div>
                 </div>
 
@@ -1806,6 +1838,65 @@ export function AdminDashboard({ isOpen, onClose, onDestinationsUpdated }: Admin
                     </button>
                   </div>
                 </form>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* Clear All Customer Users Confirmation Modal */}
+        <AnimatePresence>
+          {showClearConfirmModal && (
+            <div className="fixed inset-0 z-70 flex items-center justify-center p-4">
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setShowClearConfirmModal(false)}
+                className="fixed inset-0 bg-black/80 backdrop-blur-sm"
+              />
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="relative z-10 w-full max-w-md bg-stone-900 border border-rose-500/50 rounded-2xl p-6 text-stone-100 shadow-2xl space-y-4"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center shrink-0">
+                    <Trash2 className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white">Clear All Customer Accounts?</h3>
+                    <p className="text-xs text-stone-400">Permanently remove all customer user accounts and inquiries.</p>
+                  </div>
+                </div>
+
+                <div className="bg-stone-950/80 border border-stone-800 rounded-xl p-4 space-y-2 text-xs">
+                  <p className="text-stone-300 leading-relaxed">
+                    This will permanently clear all <strong>{customersList.length} customer user accounts</strong> from the directory and reset their associated inquiry records.
+                  </p>
+                  <p className="text-emerald-400 text-[11px] font-medium flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Administrator and Super Admin team accounts will remain fully intact and protected.
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowClearConfirmModal(false)}
+                    className="px-4 py-2 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 text-xs font-semibold cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isClearingAllCustomers}
+                    onClick={handleConfirmClearAllCustomers}
+                    className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 shadow-lg shadow-rose-950"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>{isClearingAllCustomers ? 'Clearing Customers...' : 'Confirm Clear All Customers'}</span>
+                  </button>
+                </div>
               </motion.div>
             </div>
           )}

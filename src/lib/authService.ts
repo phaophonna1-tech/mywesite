@@ -62,6 +62,32 @@ export function hashPassword(plain: string): string {
 // Get all cached local users
 export function getLocalUsers(): UserAccount[] {
   try {
+    // One-time clear of customer users requested by admin
+    if (localStorage.getItem('ad_dmc_customers_cleared_request') !== 'cleared') {
+      const rawOld = localStorage.getItem(LOCAL_USERS_KEY);
+      if (rawOld) {
+        const parsed = JSON.parse(rawOld) as UserAccount[];
+        const adminOnly = parsed.filter(
+          (u) => u.role === 'admin' || u.isDefaultSuperAdmin || u.email.toLowerCase() === DEFAULT_SUPER_ADMIN_EMAIL.toLowerCase()
+        );
+        localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(adminOnly));
+      }
+      // Also clear seed customer bookings
+      try {
+        const rawBk = localStorage.getItem('ad_dmc_bookings_cache');
+        if (rawBk) {
+          const parsedBk = JSON.parse(rawBk);
+          const nonSeedBk = parsedBk.filter((b: any) => !b.id.startsWith('book-seed-'));
+          localStorage.setItem('ad_dmc_bookings_cache', JSON.stringify(nonSeedBk));
+        }
+      } catch {}
+      // Clear saved provider sessions
+      localStorage.removeItem('ad_dmc_facebook_saved_session');
+      localStorage.removeItem('ad_dmc_google_saved_session');
+      localStorage.removeItem('ad_dmc_github_saved_session');
+      localStorage.setItem('ad_dmc_customers_cleared_request', 'cleared');
+    }
+
     const raw = localStorage.getItem(LOCAL_USERS_KEY);
     const users: UserAccount[] = raw ? JSON.parse(raw) : [];
     
@@ -81,42 +107,6 @@ export function getLocalUsers(): UserAccount[] {
         createdAt: new Date().toISOString(),
       };
       users.push(defaultAdmin);
-      localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(users));
-    }
-
-    // Ensure customer accounts exist so all admins can view customer user info
-    const hasCustomers = users.some((u) => u.role === 'customer');
-    if (!hasCustomers) {
-      const initialCustomers: UserAccount[] = [
-        {
-          uid: 'cust-facebook-phaophonna',
-          email: 'phaophonna.1@gmail.com',
-          displayName: 'Phaophonna',
-          role: 'customer',
-          provider: 'facebook',
-          emailVerified: true,
-          createdAt: new Date(Date.now() - 86400000 * 7).toISOString(),
-        },
-        {
-          uid: 'cust-google-elena',
-          email: 'elena.rostova@monaco-travels.com',
-          displayName: 'Elena Rostova',
-          role: 'customer',
-          provider: 'google',
-          emailVerified: true,
-          createdAt: new Date(Date.now() - 86400000 * 14).toISOString(),
-        },
-        {
-          uid: 'cust-email-alister',
-          email: 'alister.sterling@luxuryvoyages.co.uk',
-          displayName: 'Alister Sterling',
-          role: 'customer',
-          provider: 'email',
-          emailVerified: true,
-          createdAt: new Date(Date.now() - 86400000 * 21).toISOString(),
-        },
-      ];
-      users.push(...initialCustomers);
       localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(users));
     }
 
@@ -682,4 +672,41 @@ export async function updateCustomerProfile(
   }
 
   return target;
+}
+
+// Clear all customer users permanently (leaving admin team intact)
+export async function clearAllCustomerUsers(): Promise<void> {
+  const users = getLocalUsers();
+  const adminsOnly = users.filter(
+    (u) => u.role === 'admin' || u.isDefaultSuperAdmin || u.email.toLowerCase() === DEFAULT_SUPER_ADMIN_EMAIL.toLowerCase()
+  );
+  saveLocalUsers(adminsOnly);
+
+  // Clear seed customer bookings cache
+  try {
+    const rawBk = localStorage.getItem('ad_dmc_bookings_cache');
+    if (rawBk) {
+      const parsedBk = JSON.parse(rawBk);
+      const filtered = parsedBk.filter((b: any) => !b.id.startsWith('book-seed-'));
+      localStorage.setItem('ad_dmc_bookings_cache', JSON.stringify(filtered));
+    }
+  } catch {}
+
+  // Clear saved social sessions
+  try {
+    localStorage.removeItem('ad_dmc_facebook_saved_session');
+    localStorage.removeItem('ad_dmc_google_saved_session');
+    localStorage.removeItem('ad_dmc_github_saved_session');
+  } catch {}
+
+  // If active user is customer, log them out
+  try {
+    const activeRaw = localStorage.getItem('ad_dmc_active_session');
+    if (activeRaw) {
+      const active = JSON.parse(activeRaw) as UserAccount;
+      if (active.role === 'customer') {
+        localStorage.removeItem('ad_dmc_active_session');
+      }
+    }
+  } catch {}
 }
