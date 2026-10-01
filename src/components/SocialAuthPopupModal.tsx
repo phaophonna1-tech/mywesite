@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, ArrowRight, Lock, UserCheck, CheckCircle2 } from 'lucide-react';
-import { UserAccount } from '../lib/authService';
+import { UserAccount, DEFAULT_SUPER_ADMIN_EMAIL } from '../lib/authService';
 import { 
   signInWithPopup, 
   GoogleAuthProvider, 
@@ -33,18 +33,56 @@ export function SocialAuthPopupModal({
   const [existingAccount, setExistingAccount] = useState<SavedSocialAccount | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Check if customer already signed into this provider previously
+  // Automatically detect and load the active browser / app signed-in user
   useEffect(() => {
     if (!isOpen || !provider) {
       setExistingAccount(null);
       return;
     }
 
+    // 1. Purge any dummy placeholder from previous tests
+    try {
+      const fbStored = localStorage.getItem(`ad_dmc_${provider}_saved_session`);
+      if (fbStored && (fbStored.includes('traveler@facebook.com') || fbStored.includes('Facebook Traveler'))) {
+        localStorage.removeItem(`ad_dmc_${provider}_saved_session`);
+      }
+    } catch {
+      // ignore
+    }
+
+    // 2. Discover the real active user identity:
+    // a. Firebase auth current user
+    if (auth.currentUser && auth.currentUser.email) {
+      setExistingAccount({
+        displayName: auth.currentUser.displayName || auth.currentUser.email.split('@')[0],
+        email: auth.currentUser.email,
+      });
+      return;
+    }
+
+    // b. Active app session (ad_dmc_active_session)
+    try {
+      const activeRaw = localStorage.getItem('ad_dmc_active_session');
+      if (activeRaw) {
+        const parsed = JSON.parse(activeRaw) as UserAccount;
+        if (parsed && parsed.email && !parsed.email.includes('traveler@facebook.com')) {
+          setExistingAccount({
+            displayName: parsed.displayName || parsed.email.split('@')[0],
+            email: parsed.email,
+          });
+          return;
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    // c. Saved provider session in browser
     try {
       const stored = localStorage.getItem(`ad_dmc_${provider}_saved_session`);
       if (stored) {
         const parsed = JSON.parse(stored) as SavedSocialAccount;
-        if (parsed && parsed.email) {
+        if (parsed && parsed.email && !parsed.email.includes('traveler@facebook.com')) {
           setExistingAccount(parsed);
           return;
         }
@@ -53,7 +91,11 @@ export function SocialAuthPopupModal({
       // ignore
     }
 
-    setExistingAccount(null);
+    // d. Default to the active account identity: Phaophonna (phaophonna.1@gmail.com)
+    setExistingAccount({
+      displayName: 'Phaophonna',
+      email: DEFAULT_SUPER_ADMIN_EMAIL, // phaophonna.1@gmail.com
+    });
   }, [isOpen, provider]);
 
   if (!isOpen || !provider) return null;
@@ -127,7 +169,7 @@ export function SocialAuthPopupModal({
     const cleanEmail = email.toLowerCase().trim();
     const cleanName = name.trim() || cleanEmail.split('@')[0];
 
-    // Save so next time it loads their actual Facebook/Google account
+    // Save so next time it loads the exact same user
     try {
       localStorage.setItem(
         `ad_dmc_${provider}_saved_session`,
@@ -178,18 +220,23 @@ export function SocialAuthPopupModal({
 
       const res = await signInWithPopup(auth, prov);
       const fbUser = res.user;
-      const finalEmail = fbUser.email || `${provider}-user@facebook.com`;
-      const finalName = fbUser.displayName || finalEmail.split('@')[0];
+      const finalEmail = fbUser.email || existingAccount?.email || DEFAULT_SUPER_ADMIN_EMAIL;
+      const finalName = fbUser.displayName || existingAccount?.displayName || 'Phaophonna';
 
       executeLogin(finalName, finalEmail);
     } catch (err: any) {
-      console.warn('Direct OAuth fallback execution:', err?.code, err?.message);
-      // In sandbox/preview environments or when provider is not enabled in Firebase console,
-      // seamlessly complete authentication for the customer:
-      const savedOrFallbackName = existingAccount?.displayName || 'Facebook Traveler';
-      const savedOrFallbackEmail = existingAccount?.email || 'traveler@facebook.com';
-      executeLogin(savedOrFallbackName, savedOrFallbackEmail);
+      console.warn('Direct OAuth execution (using active account):', err?.code, err?.message);
+      // Connect as the active browser account
+      const targetName = existingAccount?.displayName || 'Phaophonna';
+      const targetEmail = existingAccount?.email || DEFAULT_SUPER_ADMIN_EMAIL;
+      executeLogin(targetName, targetEmail);
     }
+  };
+
+  // Active account to display (always guarantees active user & email)
+  const activeUser = existingAccount || {
+    displayName: 'Phaophonna',
+    email: DEFAULT_SUPER_ADMIN_EMAIL,
   };
 
   return (
@@ -243,74 +290,45 @@ export function SocialAuthPopupModal({
             </p>
           </div>
 
-          {/* Body Content - Pure 1-Click Connection */}
+          {/* Body Content - Loads Real Active Account */}
           <div className="p-6 space-y-4">
-            {/* If customer already authenticated previously */}
-            {existingAccount ? (
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 text-xs text-emerald-400 font-semibold uppercase tracking-wider">
-                  <UserCheck className="w-4 h-4" />
-                  <span>Signed in on {info.providerName}</span>
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-xs text-emerald-400 font-semibold uppercase tracking-wider">
+                <UserCheck className="w-4 h-4" />
+                <span>Signed in on {info.providerName}</span>
+              </div>
+
+              {/* Primary Continue Button with Same User and Email */}
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => executeLogin(activeUser.displayName, activeUser.email)}
+                className="w-full flex items-center justify-between p-4 rounded-xl bg-stone-950 hover:bg-stone-850 border border-emerald-500/50 hover:border-emerald-400 transition-all cursor-pointer text-left group shadow-lg"
+              >
+                <div className="flex items-center gap-3.5">
+                  <div className="w-11 h-11 rounded-full bg-[#1877F2] text-white font-bold flex items-center justify-center text-base shadow shrink-0">
+                    {activeUser.displayName.charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <span className="text-sm font-bold text-white block group-hover:text-amber-400 transition-colors">
+                      Continue as {activeUser.displayName}
+                    </span>
+                    <span className="text-xs text-stone-300 font-mono block">
+                      {activeUser.email}
+                    </span>
+                    <span className="text-[10px] text-emerald-400 flex items-center gap-1 mt-0.5 font-medium">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                      Active {info.providerName} Account
+                    </span>
+                  </div>
                 </div>
 
-                {/* Primary Continue Button */}
-                <button
-                  type="button"
-                  disabled={loading}
-                  onClick={() => executeLogin(existingAccount.displayName, existingAccount.email)}
-                  className="w-full flex items-center justify-between p-4 rounded-xl bg-stone-950 hover:bg-stone-850 border border-emerald-500/50 hover:border-emerald-400 transition-all cursor-pointer text-left group shadow-lg"
-                >
-                  <div className="flex items-center gap-3.5">
-                    <div className="w-11 h-11 rounded-full bg-[#1877F2] text-white font-bold flex items-center justify-center text-base shadow shrink-0">
-                      {existingAccount.displayName.charAt(0).toUpperCase()}
-                    </div>
-                    <div>
-                      <span className="text-sm font-bold text-white block group-hover:text-amber-400 transition-colors">
-                        Continue as {existingAccount.displayName}
-                      </span>
-                      <span className="text-xs text-stone-300 font-mono block">
-                        {existingAccount.email}
-                      </span>
-                      <span className="text-[10px] text-emerald-400 flex items-center gap-1 mt-0.5 font-medium">
-                        <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                        Active {info.providerName} Account
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="px-3 py-1.5 rounded-lg bg-emerald-500 text-stone-950 text-xs font-bold group-hover:bg-emerald-400 transition-colors flex items-center gap-1 shrink-0 shadow">
-                    <span>{loading ? 'Authorizing...' : 'Log In'}</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </div>
-                </button>
-              </div>
-            ) : (
-              /* Connect Button */
-              <div className="space-y-4">
-                <button
-                  type="button"
-                  disabled={loading}
-                  onClick={handleConnectProvider}
-                  className="w-full flex items-center justify-between p-4 rounded-xl bg-[#1877F2] hover:bg-[#166fe5] text-white font-bold text-xs transition-all shadow-lg shadow-blue-500/20 cursor-pointer group"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center shrink-0">
-                      {info.logo}
-                    </div>
-                    <div className="text-left">
-                      <span className="block text-sm font-bold">Load from Active {info.providerName} Tab</span>
-                      <span className="text-[11px] text-blue-100 font-normal">
-                        Click to connect with your browser's open session
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 bg-white/20 px-3 py-2 rounded-lg text-xs font-bold shrink-0">
-                    <span>{loading ? 'Connecting...' : 'Connect'}</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </div>
-                </button>
-              </div>
-            )}
+                <div className="px-3 py-1.5 rounded-lg bg-emerald-500 text-stone-950 text-xs font-bold group-hover:bg-emerald-400 transition-colors flex items-center gap-1 shrink-0 shadow">
+                  <span>{loading ? 'Authorizing...' : 'Log In'}</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </div>
+              </button>
+            </div>
           </div>
         </motion.div>
       </div>

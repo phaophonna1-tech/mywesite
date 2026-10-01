@@ -19,6 +19,7 @@ export interface BookingRecord {
   userId: string;
   userEmail: string;
   userName: string;
+  userPhone?: string;
   destinationId: string;
   destinationName: string;
   travelers: number;
@@ -41,7 +42,72 @@ const CUSTOM_DESTINATIONS_KEY = 'ad_dmc_custom_destinations';
 export function getLocalBookings(): BookingRecord[] {
   try {
     const raw = localStorage.getItem(BOOKINGS_KEY);
-    return raw ? JSON.parse(raw) : [];
+    if (raw) return JSON.parse(raw);
+
+    // Initial customer bookings
+    const initialBookings: BookingRecord[] = [
+      {
+        id: 'book-seed-001',
+        code: 'AD-DMC-2026-8812',
+        userId: 'cust-facebook-phaophonna',
+        destinationId: 'angkor',
+        destinationName: 'Angkor & Tonle Sap Heritage',
+        userName: 'Phaophonna',
+        userEmail: 'phaophonna.1@gmail.com',
+        userPhone: '+855 12 345 678',
+        travelers: 2,
+        tier: 'Ultra-Private Expedition',
+        durationDays: 7,
+        startDate: '2026-11-15',
+        notes: 'Private dawn temple access and sacred water blessing at Angkor.',
+        estimatedTotal: 5780,
+        status: 'approved',
+        adminNotes: 'VIP tarmac fast-track clearance arranged.',
+        createdAt: new Date(Date.now() - 86400000 * 3).toISOString(),
+        updatedAt: new Date(Date.now() - 86400000 * 2).toISOString(),
+      },
+      {
+        id: 'book-seed-002',
+        code: 'AD-DMC-2026-4491',
+        userId: 'cust-google-elena',
+        destinationId: 'kyoto',
+        destinationName: 'Kyoto & Japanese Alps',
+        userName: 'Elena Rostova',
+        userEmail: 'elena.rostova@monaco-travels.com',
+        userPhone: '+377 98 123 456',
+        travelers: 4,
+        tier: 'Signature Luxury',
+        durationDays: 9,
+        startDate: '2026-10-20',
+        notes: 'Cedar hot-spring onsen bath with views of snow-dusted mountains.',
+        estimatedTotal: 17400,
+        status: 'paid',
+        adminNotes: 'Full payment received and guaranteed.',
+        createdAt: new Date(Date.now() - 86400000 * 6).toISOString(),
+        updatedAt: new Date(Date.now() - 86400000 * 4).toISOString(),
+      },
+      {
+        id: 'book-seed-003',
+        code: 'AD-DMC-2026-3105',
+        userId: 'cust-email-alister',
+        destinationId: 'bhutan',
+        destinationName: 'Bhutanese Kingdom & Tigers Nest',
+        userName: 'Alister Sterling',
+        userEmail: 'alister.sterling@luxuryvoyages.co.uk',
+        userPhone: '+44 20 7946 0912',
+        travelers: 2,
+        tier: 'Ultra-Private Expedition',
+        durationDays: 8,
+        startDate: '2026-12-05',
+        notes: 'Helicopter transfer Paro to Punakha with private monastery access.',
+        estimatedTotal: 10400,
+        status: 'pending',
+        createdAt: new Date(Date.now() - 86400000 * 1).toISOString(),
+        updatedAt: new Date(Date.now() - 86400000 * 1).toISOString(),
+      }
+    ];
+    saveLocalBookings(initialBookings);
+    return initialBookings;
   } catch {
     return [];
   }

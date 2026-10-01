@@ -25,14 +25,17 @@ export interface UserAccount {
   uid: string;
   email: string;
   displayName: string;
+  phone?: string;
   photoURL?: string;
-  provider?: 'google' | 'facebook' | 'github' | 'credentials';
+  provider?: 'google' | 'facebook' | 'github' | 'credentials' | 'email';
   role: 'customer' | 'admin';
+  status?: 'active' | 'inactive';
   isDefaultSuperAdmin?: boolean;
   emailVerified: boolean;
   passwordHash?: string; // stored for email/pass verification
   createdBy?: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface VerificationCodeRecord {
@@ -80,6 +83,43 @@ export function getLocalUsers(): UserAccount[] {
       users.push(defaultAdmin);
       localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(users));
     }
+
+    // Ensure customer accounts exist so all admins can view customer user info
+    const hasCustomers = users.some((u) => u.role === 'customer');
+    if (!hasCustomers) {
+      const initialCustomers: UserAccount[] = [
+        {
+          uid: 'cust-facebook-phaophonna',
+          email: 'phaophonna.1@gmail.com',
+          displayName: 'Phaophonna',
+          role: 'customer',
+          provider: 'facebook',
+          emailVerified: true,
+          createdAt: new Date(Date.now() - 86400000 * 7).toISOString(),
+        },
+        {
+          uid: 'cust-google-elena',
+          email: 'elena.rostova@monaco-travels.com',
+          displayName: 'Elena Rostova',
+          role: 'customer',
+          provider: 'google',
+          emailVerified: true,
+          createdAt: new Date(Date.now() - 86400000 * 14).toISOString(),
+        },
+        {
+          uid: 'cust-email-alister',
+          email: 'alister.sterling@luxuryvoyages.co.uk',
+          displayName: 'Alister Sterling',
+          role: 'customer',
+          provider: 'email',
+          emailVerified: true,
+          createdAt: new Date(Date.now() - 86400000 * 21).toISOString(),
+        },
+      ];
+      users.push(...initialCustomers);
+      localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(users));
+    }
+
     return users;
   } catch {
     return [];
@@ -383,6 +423,10 @@ export async function loginWithEmailPassword(
     throw new Error(`This login portal is for ${requiredRole}s. Your account is configured as ${user.role}.`);
   }
 
+  if (user.status === 'inactive') {
+    throw new Error('This customer account has been deactivated by an administrator. Please contact Asia Destination DMC.');
+  }
+
   return user;
 }
 
@@ -484,4 +528,158 @@ export async function signOutAuth(): Promise<void> {
   } catch (err) {
     console.warn('fbSignOut error:', err);
   }
+}
+
+// ================= CUSTOMER USER MANAGEMENT (ALL ADMINS) =================
+
+// Activate or Inactivate customer account
+export async function updateCustomerStatus(
+  email: string,
+  newStatus: 'active' | 'inactive'
+): Promise<UserAccount> {
+  const users = getLocalUsers();
+  const cleanEmail = email.toLowerCase().trim();
+  const targetIndex = users.findIndex((u) => u.email.toLowerCase() === cleanEmail);
+
+  if (targetIndex === -1) {
+    const newCust: UserAccount = {
+      uid: `cust-${Date.now()}`,
+      email: cleanEmail,
+      displayName: cleanEmail.split('@')[0],
+      role: 'customer',
+      status: newStatus,
+      emailVerified: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    users.push(newCust);
+    saveLocalUsers(users);
+    return newCust;
+  }
+
+  const target = users[targetIndex];
+  if (target.isDefaultSuperAdmin || cleanEmail === DEFAULT_SUPER_ADMIN_EMAIL.toLowerCase()) {
+    throw new Error('Default Super Admin status cannot be altered.');
+  }
+
+  target.status = newStatus;
+  target.updatedAt = new Date().toISOString();
+  users[targetIndex] = target;
+  saveLocalUsers(users);
+
+  // Sync to Firestore
+  try {
+    const userRef = doc(db, 'users', target.uid);
+    await updateDoc(userRef, {
+      status: newStatus,
+      updatedAt: target.updatedAt,
+    });
+  } catch (err) {
+    console.warn('Firestore updateCustomerStatus error:', err);
+  }
+
+  // Update active session if target customer is currently logged in
+  try {
+    const activeRaw = localStorage.getItem('ad_dmc_active_session');
+    if (activeRaw) {
+      const active = JSON.parse(activeRaw) as UserAccount;
+      if (active.email.toLowerCase() === cleanEmail) {
+        active.status = newStatus;
+        localStorage.setItem('ad_dmc_active_session', JSON.stringify(active));
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  return target;
+}
+
+// Delete customer user permanently
+export async function deleteCustomerUser(email: string): Promise<void> {
+  const cleanEmail = email.toLowerCase().trim();
+  if (cleanEmail === DEFAULT_SUPER_ADMIN_EMAIL.toLowerCase()) {
+    throw new Error('Default Super Admin cannot be deleted.');
+  }
+
+  const users = getLocalUsers();
+  const target = users.find((u) => u.email.toLowerCase() === cleanEmail);
+
+  if (target?.isDefaultSuperAdmin) {
+    throw new Error('Default Super Admin cannot be deleted.');
+  }
+
+  const filtered = users.filter((u) => u.email.toLowerCase() !== cleanEmail);
+  saveLocalUsers(filtered);
+
+  // Remove from Firestore
+  if (target?.uid) {
+    try {
+      await deleteDoc(doc(db, 'users', target.uid));
+    } catch (err) {
+      console.warn('Firestore deleteCustomerUser error:', err);
+    }
+  }
+
+  // Clear active session if customer is currently signed in
+  try {
+    const activeRaw = localStorage.getItem('ad_dmc_active_session');
+    if (activeRaw) {
+      const active = JSON.parse(activeRaw) as UserAccount;
+      if (active.email.toLowerCase() === cleanEmail) {
+        localStorage.removeItem('ad_dmc_active_session');
+      }
+    }
+  } catch {
+    // ignore
+  }
+}
+
+// Edit customer user profile details
+export async function updateCustomerProfile(
+  email: string,
+  updates: { displayName?: string; phone?: string; status?: 'active' | 'inactive' }
+): Promise<UserAccount> {
+  const cleanEmail = email.toLowerCase().trim();
+  const users = getLocalUsers();
+  const targetIndex = users.findIndex((u) => u.email.toLowerCase() === cleanEmail);
+
+  if (targetIndex === -1) {
+    const newCust: UserAccount = {
+      uid: `cust-${Date.now()}`,
+      email: cleanEmail,
+      displayName: updates.displayName || cleanEmail.split('@')[0],
+      phone: updates.phone,
+      status: updates.status || 'active',
+      role: 'customer',
+      emailVerified: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    users.push(newCust);
+    saveLocalUsers(users);
+    return newCust;
+  }
+
+  const target = users[targetIndex];
+  if (updates.displayName) target.displayName = updates.displayName.trim();
+  if (updates.phone !== undefined) target.phone = updates.phone.trim();
+  if (updates.status) target.status = updates.status;
+  target.updatedAt = new Date().toISOString();
+
+  users[targetIndex] = target;
+  saveLocalUsers(users);
+
+  try {
+    await updateDoc(doc(db, 'users', target.uid), {
+      displayName: target.displayName,
+      phone: target.phone,
+      status: target.status,
+      updatedAt: target.updatedAt,
+    });
+  } catch (err) {
+    console.warn('Firestore updateCustomerProfile error:', err);
+  }
+
+  return target;
 }
