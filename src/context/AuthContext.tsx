@@ -24,7 +24,7 @@ interface AuthContextType {
   sendOtp: (email: string, purpose: 'register' | 'reset_password') => Promise<{ code: string; mailtoUrl: string }>;
   verifyOtp: (email: string, code: string, purpose: 'register' | 'reset_password') => Promise<boolean>;
   resetPassword: (email: string, newPass: string) => Promise<void>;
-  loginSocial: (provider: 'google' | 'facebook' | 'github') => Promise<UserAccount>;
+  loginSocial: (provider: 'google' | 'facebook' | 'github', selectedAccount?: Partial<UserAccount>) => Promise<UserAccount>;
   createAdmin: (name: string, email: string, initialPass: string) => Promise<UserAccount>;
   deleteAdmin: (email: string) => Promise<void>;
   signOutUser: () => Promise<void>;
@@ -94,8 +94,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await resetUserPassword(email, newPass);
   };
 
-  const loginSocial = async (provider: 'google' | 'facebook' | 'github') => {
-    const account = await loginWithProvider(provider);
+  const loginSocial = async (provider: 'google' | 'facebook' | 'github', selectedAccount?: Partial<UserAccount>) => {
+    const account = await loginWithProvider(provider, selectedAccount);
     setUser(account);
     localStorage.setItem('ad_dmc_active_session', JSON.stringify(account));
     return account;

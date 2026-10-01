@@ -41,8 +41,8 @@ export function TripPlanner({ destinations = DESTINATIONS, selectedDestinationId
     if (user) {
       setFormData((prev) => ({
         ...prev,
-        name: prev.name || user.displayName || '',
-        email: prev.email || user.email || '',
+        name: user.displayName || prev.name,
+        email: user.email || prev.email,
       }));
     }
   }, [user]);
@@ -245,7 +245,23 @@ export function TripPlanner({ destinations = DESTINATIONS, selectedDestinationId
               </div>
 
               {/* Contact Information */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+              {user && (
+                <div className="p-3 bg-stone-950 border border-stone-800 rounded-xl flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                    <span className="text-stone-400">Authenticated Traveler:</span>
+                    <strong className="text-white">{user.displayName}</strong>
+                    <span className="text-amber-400 font-mono">({user.email})</span>
+                  </div>
+                  {user.provider && (
+                    <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-stone-900 border border-stone-700 text-stone-300">
+                      via {user.provider}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
                 <div>
                   <label htmlFor={`${formId}-name`} className="block text-xs font-semibold uppercase tracking-wider text-stone-300 mb-1">
                     Your Full Name *

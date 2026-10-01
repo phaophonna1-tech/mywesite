@@ -148,9 +148,17 @@ export function CustomerDashboard({ isOpen, onClose, onNewBookingClick }: Custom
               <h2 className="text-2xl font-serif font-bold text-white mt-1">
                 My Bookings & Expeditions
               </h2>
-              <p className="text-xs text-stone-400">
-                Logged in as: <strong className="text-amber-400">{user?.email || 'Guest Traveler'}</strong>
-              </p>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-stone-400 mt-1">
+                <span>Account:</span>
+                <strong className="text-white">{user?.displayName || 'Traveler'}</strong>
+                <span className="text-stone-600">•</span>
+                <span className="text-amber-400 font-mono font-medium">{user?.email || 'guest@asiadmc.travel'}</span>
+                {user?.provider && (
+                  <span className="uppercase text-[10px] bg-stone-800 text-stone-300 font-bold px-2 py-0.5 rounded border border-stone-700">
+                    via {user.provider}
+                  </span>
+                )}
+              </div>
             </div>
             <button
               onClick={onClose}

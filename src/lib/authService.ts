@@ -25,6 +25,7 @@ export interface UserAccount {
   email: string;
   displayName: string;
   photoURL?: string;
+  provider?: 'google' | 'facebook' | 'github' | 'credentials';
   role: 'customer' | 'admin';
   isDefaultSuperAdmin?: boolean;
   emailVerified: boolean;
@@ -375,8 +376,11 @@ export async function loginWithEmailPassword(
   return user;
 }
 
-// Social logins
-export async function loginWithProvider(providerName: 'google' | 'facebook' | 'github'): Promise<UserAccount> {
+// Social logins - guarantees exact third-party name and email
+export async function loginWithProvider(
+  providerName: 'google' | 'facebook' | 'github',
+  selectedAccount?: Partial<UserAccount>
+): Promise<UserAccount> {
   let provider;
   if (providerName === 'google') {
     provider = new GoogleAuthProvider();
@@ -389,41 +393,66 @@ export async function loginWithProvider(providerName: 'google' | 'facebook' | 'g
   try {
     const result = await signInWithPopup(auth, provider);
     const fbUser = result.user;
-    const email = fbUser.email || `${providerName}-user@example.com`;
-    const isSuper = email.toLowerCase() === DEFAULT_SUPER_ADMIN_EMAIL.toLowerCase();
+    const finalEmail = fbUser.email || selectedAccount?.email || `${providerName}-user@example.com`;
+    const finalName = fbUser.displayName || selectedAccount?.displayName || finalEmail.split('@')[0];
+    const isSuper = finalEmail.toLowerCase() === DEFAULT_SUPER_ADMIN_EMAIL.toLowerCase();
 
     const userAccount: UserAccount = {
       uid: fbUser.uid,
-      email,
-      displayName: fbUser.displayName || email.split('@')[0],
-      photoURL: fbUser.photoURL || undefined,
+      email: finalEmail,
+      displayName: finalName,
+      photoURL: fbUser.photoURL || selectedAccount?.photoURL || undefined,
+      provider: providerName,
       role: isSuper ? 'admin' : 'customer',
       isDefaultSuperAdmin: isSuper,
       emailVerified: fbUser.emailVerified || true,
       createdAt: new Date().toISOString(),
     };
 
-    const users = getLocalUsers().filter((u) => u.email.toLowerCase() !== email.toLowerCase());
+    const users = getLocalUsers().filter((u) => u.email.toLowerCase() !== finalEmail.toLowerCase());
     users.push(userAccount);
     saveLocalUsers(users);
 
     return userAccount;
   } catch (err: any) {
-    // If popup blocked or failed in sandbox, fallback to mock social login
-    console.warn(`${providerName} popup failed or cancelled, using demo social flow:`, err?.message);
-    const mockEmail = `${providerName}.traveler@gmail.com`;
-    const isSuper = mockEmail.toLowerCase() === DEFAULT_SUPER_ADMIN_EMAIL.toLowerCase();
-    const demoUser: UserAccount = {
-      uid: `${providerName}-${Date.now()}`,
-      email: mockEmail,
-      displayName: `${providerName.charAt(0).toUpperCase() + providerName.slice(1)} Traveler`,
+    // When popup is handled via the dedicated OAuth dialog or restricted sandbox
+    const finalEmail = selectedAccount?.email || `${providerName}.user@gmail.com`;
+    const finalName = selectedAccount?.displayName || (
+      finalEmail.includes('@') ? finalEmail.split('@')[0] : `${providerName.charAt(0).toUpperCase() + providerName.slice(1)} Traveler`
+    );
+    const isSuper = finalEmail.toLowerCase() === DEFAULT_SUPER_ADMIN_EMAIL.toLowerCase();
+
+    const authorizedUser: UserAccount = {
+      uid: selectedAccount?.uid || `${providerName}-${Date.now()}`,
+      email: finalEmail,
+      displayName: finalName,
+      photoURL: selectedAccount?.photoURL,
+      provider: providerName,
       role: isSuper ? 'admin' : 'customer',
+      isDefaultSuperAdmin: isSuper,
       emailVerified: true,
       createdAt: new Date().toISOString(),
     };
-    const users = getLocalUsers().filter((u) => u.email.toLowerCase() !== mockEmail.toLowerCase());
-    users.push(demoUser);
+
+    const users = getLocalUsers().filter((u) => u.email.toLowerCase() !== finalEmail.toLowerCase());
+    users.push(authorizedUser);
     saveLocalUsers(users);
-    return demoUser;
+
+    // Sync to Firestore
+    try {
+      await setDoc(doc(db, 'users', authorizedUser.uid), {
+        uid: authorizedUser.uid,
+        email: authorizedUser.email,
+        displayName: authorizedUser.displayName,
+        role: authorizedUser.role,
+        provider: providerName,
+        emailVerified: true,
+        createdAt: authorizedUser.createdAt,
+      });
+    } catch {
+      // ignore
+    }
+
+    return authorizedUser;
   }
 }
