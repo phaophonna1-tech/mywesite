@@ -1,162 +1,144 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { 
-  User as FirebaseUser,
-  onAuthStateChanged,
-  signInWithPopup,
-  signOut as firebaseSignOut
-} from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { auth, googleProvider, db, handleFirestoreError, OperationType } from '../lib/firebase';
-
-export type UserRole = 'customer' | 'admin';
-
-export interface AppUser {
-  uid: string;
-  email: string;
-  displayName: string;
-  photoURL?: string;
-  role: UserRole;
-}
+  UserAccount, 
+  DEFAULT_SUPER_ADMIN_EMAIL,
+  getLocalUsers, 
+  loginWithEmailPassword, 
+  registerCustomer, 
+  sendVerificationCode, 
+  verifyCode, 
+  resetUserPassword,
+  createSecondaryAdmin,
+  deleteSecondaryAdmin,
+  loginWithProvider
+} from '../lib/authService';
 
 interface AuthContextType {
-  user: AppUser | null;
-  firebaseUser: FirebaseUser | null;
-  role: UserRole | null;
+  user: UserAccount | null;
+  role: 'customer' | 'admin' | null;
   isAdmin: boolean;
+  isDefaultSuperAdmin: boolean;
   loading: boolean;
-  signInWithGoogle: () => Promise<void>;
-  signInQuickRole: (role: UserRole, customEmail?: string) => Promise<void>;
+  login: (email: string, pass: string, role?: 'customer' | 'admin') => Promise<UserAccount>;
+  register: (name: string, email: string, pass: string) => Promise<UserAccount>;
+  sendOtp: (email: string, purpose: 'register' | 'reset_password') => Promise<{ code: string; mailtoUrl: string }>;
+  verifyOtp: (email: string, code: string, purpose: 'register' | 'reset_password') => Promise<boolean>;
+  resetPassword: (email: string, newPass: string) => Promise<void>;
+  loginSocial: (provider: 'google' | 'facebook' | 'github') => Promise<UserAccount>;
+  createAdmin: (name: string, email: string, initialPass: string) => Promise<UserAccount>;
+  deleteAdmin: (email: string) => Promise<void>;
   signOutUser: () => Promise<void>;
 }
 
-const ADMIN_EMAIL = 'phaophonna.1@gmail.com';
-
 const AuthContext = createContext<AuthContextType>({
   user: null,
-  firebaseUser: null,
   role: null,
   isAdmin: false,
+  isDefaultSuperAdmin: false,
   loading: true,
-  signInWithGoogle: async () => {},
-  signInQuickRole: async () => {},
+  login: async () => ({} as UserAccount),
+  register: async () => ({} as UserAccount),
+  sendOtp: async () => ({ code: '', mailtoUrl: '' }),
+  verifyOtp: async () => false,
+  resetPassword: async () => {},
+  loginSocial: async () => ({} as UserAccount),
+  createAdmin: async () => ({} as UserAccount),
+  deleteAdmin: async () => {},
   signOutUser: async () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
-  const [user, setUser] = useState<AppUser | null>(null);
+  const [user, setUser] = useState<UserAccount | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Check saved guest/demo session in localStorage for local testing fallback
-  const loadLocalUser = (): AppUser | null => {
-    try {
-      const saved = localStorage.getItem('ad_dmc_active_user');
-      if (saved) return JSON.parse(saved);
-    } catch {
-      // fallback
-    }
-    return null;
-  };
-
+  // Initialize and check persisted session
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
-      setFirebaseUser(fbUser);
-      if (fbUser) {
-        const email = fbUser.email || '';
-        const isUserAdmin = email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
-        const role: UserRole = isUserAdmin ? 'admin' : 'customer';
-
-        const appUserData: AppUser = {
-          uid: fbUser.uid,
-          email,
-          displayName: fbUser.displayName || email.split('@')[0] || 'Traveler',
-          photoURL: fbUser.photoURL || undefined,
-          role,
-        };
-
-        // Sync user to Firestore
-        try {
-          const userDocRef = doc(db, 'users', fbUser.uid);
-          const snap = await getDoc(userDocRef);
-          if (!snap.exists()) {
-            await setDoc(userDocRef, {
-              uid: appUserData.uid,
-              email: appUserData.email,
-              displayName: appUserData.displayName,
-              photoURL: appUserData.photoURL || '',
-              role: appUserData.role,
-              createdAt: new Date().toISOString(),
-            });
-          }
-        } catch (err) {
-          console.warn('Could not sync user profile to Firestore:', err);
-        }
-
-        setUser(appUserData);
-        localStorage.setItem('ad_dmc_active_user', JSON.stringify(appUserData));
-      } else {
-        const local = loadLocalUser();
-        setUser(local);
-      }
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  const signInWithGoogle = async () => {
     try {
-      setLoading(true);
-      await signInWithPopup(auth, googleProvider);
-    } catch (error: any) {
-      console.warn('Popup sign in error (falling back to quick login):', error?.message);
-      throw error;
+      const activeRaw = localStorage.getItem('ad_dmc_active_session');
+      if (activeRaw) {
+        const parsed = JSON.parse(activeRaw) as UserAccount;
+        setUser(parsed);
+      }
+    } catch {
+      // ignore
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  const login = async (email: string, pass: string, role?: 'customer' | 'admin') => {
+    const account = await loginWithEmailPassword(email, pass, role);
+    setUser(account);
+    localStorage.setItem('ad_dmc_active_session', JSON.stringify(account));
+    return account;
   };
 
-  // Quick switch for easy testing between Customer and Admin (phaophonna.1@gmail.com)
-  const signInQuickRole = async (targetRole: UserRole, customEmail?: string) => {
-    const email = customEmail || (targetRole === 'admin' ? ADMIN_EMAIL : 'traveler@gmail.com');
-    const name = targetRole === 'admin' ? 'Phaophonna (Admin)' : 'Valued Traveler';
-    const mockUid = targetRole === 'admin' ? 'admin-phaophonna-uid' : `cust-${Date.now()}`;
+  const register = async (name: string, email: string, pass: string) => {
+    const account = await registerCustomer(name, email, pass);
+    setUser(account);
+    localStorage.setItem('ad_dmc_active_session', JSON.stringify(account));
+    return account;
+  };
 
-    const appUserData: AppUser = {
-      uid: mockUid,
-      email,
-      displayName: name,
-      role: targetRole,
-    };
+  const sendOtp = async (email: string, purpose: 'register' | 'reset_password') => {
+    return await sendVerificationCode(email, purpose);
+  };
 
-    setUser(appUserData);
-    localStorage.setItem('ad_dmc_active_user', JSON.stringify(appUserData));
+  const verifyOtp = async (email: string, code: string, purpose: 'register' | 'reset_password') => {
+    return await verifyCode(email, code, purpose);
+  };
+
+  const resetPassword = async (email: string, newPass: string) => {
+    await resetUserPassword(email, newPass);
+  };
+
+  const loginSocial = async (provider: 'google' | 'facebook' | 'github') => {
+    const account = await loginWithProvider(provider);
+    setUser(account);
+    localStorage.setItem('ad_dmc_active_session', JSON.stringify(account));
+    return account;
+  };
+
+  const createAdmin = async (name: string, email: string, initialPass: string) => {
+    if (!user || user.email.toLowerCase() !== DEFAULT_SUPER_ADMIN_EMAIL.toLowerCase()) {
+      throw new Error('Only the default super admin (phaophonna.1@gmail.com) can create administrator accounts.');
+    }
+    return await createSecondaryAdmin(user.email, name, email, initialPass);
+  };
+
+  const deleteAdmin = async (email: string) => {
+    if (!user || user.email.toLowerCase() !== DEFAULT_SUPER_ADMIN_EMAIL.toLowerCase()) {
+      throw new Error('Only the default super admin can manage administrator accounts.');
+    }
+    await deleteSecondaryAdmin(user.email, email);
   };
 
   const signOutUser = async () => {
-    try {
-      await firebaseSignOut(auth);
-    } catch {
-      // ignore
-    }
     setUser(null);
-    localStorage.removeItem('ad_dmc_active_user');
+    localStorage.removeItem('ad_dmc_active_session');
   };
 
-  const isAdmin = user?.role === 'admin' || user?.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+  const isAdmin = user?.role === 'admin' || user?.email.toLowerCase() === DEFAULT_SUPER_ADMIN_EMAIL.toLowerCase();
+  const isDefaultSuperAdmin = user?.email.toLowerCase() === DEFAULT_SUPER_ADMIN_EMAIL.toLowerCase() || user?.isDefaultSuperAdmin === true;
 
   return (
     <AuthContext.Provider
       value={{
         user,
-        firebaseUser,
         role: user?.role || null,
         isAdmin,
+        isDefaultSuperAdmin,
         loading,
-        signInWithGoogle,
-        signInQuickRole,
+        login,
+        register,
+        sendOtp,
+        verifyOtp,
+        resetPassword,
+        loginSocial,
+        createAdmin,
+        deleteAdmin,
         signOutUser,
       }}
     >

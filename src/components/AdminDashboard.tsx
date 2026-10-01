@@ -19,7 +19,10 @@ import {
   ExternalLink,
   Send,
   Check,
-  AlertTriangle
+  AlertTriangle,
+  Lock,
+  UserPlus,
+  Users
 } from 'lucide-react';
 import { 
   BookingRecord, 
@@ -33,6 +36,8 @@ import {
 } from '../lib/bookingService';
 import { DESTINATIONS as initialDestinations } from '../data/destinations';
 import { Destination } from '../types';
+import { useAuth } from '../context/AuthContext';
+import { DEFAULT_SUPER_ADMIN_EMAIL, getLocalUsers, UserAccount } from '../lib/authService';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
@@ -43,18 +48,26 @@ interface AdminDashboardProps {
 }
 
 export function AdminDashboard({ isOpen, onClose, onDestinationsUpdated }: AdminDashboardProps) {
-  const [activeTab, setActiveTab] = useState<'bookings' | 'destinations'>('bookings');
+  const { user, isDefaultSuperAdmin, createAdmin, deleteAdmin } = useAuth();
+  const [activeTab, setActiveTab] = useState<'bookings' | 'destinations' | 'admins'>('bookings');
+  
+  // Bookings state
   const [bookings, setBookings] = useState<BookingRecord[]>([]);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedBookingForNotes, setSelectedBookingForNotes] = useState<string | null>(null);
-  const [curatorNoteInput, setCuratorNoteInput] = useState('');
   const [statusActionSuccess, setStatusActionSuccess] = useState<string | null>(null);
 
   // Destinations Management state
   const [destinationsList, setDestinationsList] = useState<Destination[]>([]);
   const [isAddingDestination, setIsAddingDestination] = useState(false);
-  const [editingDestId, setEditingDestId] = useState<string | null>(null);
+
+  // Admin Team state
+  const [adminUsers, setAdminUsers] = useState<UserAccount[]>([]);
+  const [isAddingAdmin, setIsAddingAdmin] = useState(false);
+  const [newAdminName, setNewAdminName] = useState('');
+  const [newAdminEmail, setNewAdminEmail] = useState('');
+  const [newAdminPassword, setNewAdminPassword] = useState('');
+  const [adminActionError, setAdminActionError] = useState<string | null>(null);
 
   // New Destination Form state
   const [destForm, setDestForm] = useState({
@@ -84,12 +97,19 @@ export function AdminDashboard({ isOpen, onClose, onDestinationsUpdated }: Admin
     setDestinationsList(merged);
   };
 
+  // Load Admins list
+  const refreshAdmins = () => {
+    const all = getLocalUsers();
+    setAdminUsers(all.filter((u) => u.role === 'admin' || u.email.toLowerCase() === DEFAULT_SUPER_ADMIN_EMAIL.toLowerCase()));
+  };
+
   useEffect(() => {
     if (!isOpen) return;
     refreshBookings();
     refreshDestinations();
+    refreshAdmins();
 
-    // Firestore live updates
+    // Firestore live updates for bookings
     try {
       const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'));
       const unsub = onSnapshot(
@@ -133,31 +153,27 @@ export function AdminDashboard({ isOpen, onClose, onDestinationsUpdated }: Admin
 
   // Status Update Handlers
   const handleApprove = async (booking: BookingRecord) => {
-    const note = curatorNoteInput || 'Approved by Senior Curator. Ready for final reservation.';
+    const note = window.prompt('Add Curator note for approval:', 'Approved by Senior Curator. All bespoke arrangements reserved.') || '';
     await updateBookingStatus(booking.id, 'approved', note);
     refreshBookings();
-    setSelectedBookingForNotes(null);
-    setCuratorNoteInput('');
 
     // Trigger email back to customer
     const emailLink = generateStatusEmailLink({ ...booking, adminNotes: note }, 'approved');
-    setStatusActionSuccess(`Booking ${booking.code} APPROVED! Opening email to notify customer...`);
+    setStatusActionSuccess(`Booking ${booking.code} APPROVED! Opening email to notify customer ${booking.userEmail}...`);
     window.open(emailLink, '_blank');
-    setTimeout(() => setStatusActionSuccess(null), 4000);
+    setTimeout(() => setStatusActionSuccess(null), 5000);
   };
 
   const handleMarkPaid = async (booking: BookingRecord) => {
-    const note = curatorNoteInput || 'Full payment received and guaranteed.';
+    const note = window.prompt('Add receipt confirmation note:', 'Full payment received and guaranteed by Asia Destination DMC.') || '';
     await updateBookingStatus(booking.id, 'paid', note);
     refreshBookings();
-    setSelectedBookingForNotes(null);
-    setCuratorNoteInput('');
 
     // Trigger payment receipt email back to customer
     const emailLink = generateStatusEmailLink({ ...booking, adminNotes: note }, 'paid');
-    setStatusActionSuccess(`Booking ${booking.code} marked as PAID! Opening confirmation email to customer...`);
+    setStatusActionSuccess(`Booking ${booking.code} marked as PAID! Opening confirmation receipt to ${booking.userEmail}...`);
     window.open(emailLink, '_blank');
-    setTimeout(() => setStatusActionSuccess(null), 4000);
+    setTimeout(() => setStatusActionSuccess(null), 5000);
   };
 
   const handleSendStatusEmail = (booking: BookingRecord) => {
@@ -220,7 +236,6 @@ export function AdminDashboard({ isOpen, onClose, onDestinationsUpdated }: Admin
     setTimeout(() => setStatusActionSuccess(null), 3000);
   };
 
-  // Inline Price & Image change
   const handleUpdatePrice = async (dest: Destination, newPrice: number) => {
     const updated = { ...dest, priceFrom: newPrice };
     await updateCustomDestination(updated);
@@ -240,6 +255,51 @@ export function AdminDashboard({ isOpen, onClose, onDestinationsUpdated }: Admin
       await deleteCustomDestination(id);
       refreshDestinations();
       onDestinationsUpdated();
+    }
+  };
+
+  // Add Secondary Admin Handler (Default Admin Only)
+  const handleCreateAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAdminActionError(null);
+    if (!newAdminEmail.trim() || !newAdminPassword.trim()) {
+      setAdminActionError('Please provide an email and initial password for the new admin.');
+      return;
+    }
+    if (newAdminPassword.length < 6) {
+      setAdminActionError('Initial password must be at least 6 characters.');
+      return;
+    }
+
+    try {
+      await createAdmin(newAdminName || 'Regional Manager', newAdminEmail, newAdminPassword);
+      refreshAdmins();
+      setIsAddingAdmin(false);
+      setNewAdminName('');
+      setNewAdminEmail('');
+      setNewAdminPassword('');
+      setStatusActionSuccess(`New administrator account ${newAdminEmail} created successfully!`);
+      setTimeout(() => setStatusActionSuccess(null), 4000);
+    } catch (err: any) {
+      setAdminActionError(err?.message || 'Failed to create administrator account.');
+    }
+  };
+
+  // Delete Secondary Admin Handler
+  const handleDeleteAdmin = async (emailToDelete: string) => {
+    if (emailToDelete.toLowerCase() === DEFAULT_SUPER_ADMIN_EMAIL.toLowerCase()) {
+      alert('SECURITY CONSTRAINT: The default super administrator (phaophonna.1@gmail.com) is immutable and cannot be deleted.');
+      return;
+    }
+    if (window.confirm(`Revoke admin access for ${emailToDelete}?`)) {
+      try {
+        await deleteAdmin(emailToDelete);
+        refreshAdmins();
+        setStatusActionSuccess(`Administrator ${emailToDelete} removed.`);
+        setTimeout(() => setStatusActionSuccess(null), 3000);
+      } catch (err: any) {
+        alert(err?.message || 'Could not delete administrator.');
+      }
     }
   };
 
@@ -268,7 +328,7 @@ export function AdminDashboard({ isOpen, onClose, onDestinationsUpdated }: Admin
                   ADMIN CONSOLE
                 </span>
                 <span className="text-xs text-stone-400">
-                  Super Admin: <strong className="text-amber-400">phaophonna.1@gmail.com</strong>
+                  Super Admin: <strong className="text-amber-400">{DEFAULT_SUPER_ADMIN_EMAIL}</strong>
                 </span>
               </div>
               <h2 className="text-2xl font-serif font-bold text-white mt-1">
@@ -277,10 +337,10 @@ export function AdminDashboard({ isOpen, onClose, onDestinationsUpdated }: Admin
             </div>
 
             <div className="flex items-center gap-3">
-              <div className="flex p-1 bg-stone-900 border border-stone-800 rounded-xl">
+              <div className="flex p-1 bg-stone-900 border border-stone-800 rounded-xl overflow-x-auto">
                 <button
                   onClick={() => setActiveTab('bookings')}
-                  className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  className={`px-3 sm:px-4 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
                     activeTab === 'bookings'
                       ? 'bg-amber-400 text-stone-950 shadow-md'
                       : 'text-stone-400 hover:text-white'
@@ -290,13 +350,23 @@ export function AdminDashboard({ isOpen, onClose, onDestinationsUpdated }: Admin
                 </button>
                 <button
                   onClick={() => setActiveTab('destinations')}
-                  className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  className={`px-3 sm:px-4 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
                     activeTab === 'destinations'
                       ? 'bg-amber-400 text-stone-950 shadow-md'
                       : 'text-stone-400 hover:text-white'
                   }`}
                 >
                   Destinations & Pricing ({destinationsList.length})
+                </button>
+                <button
+                  onClick={() => setActiveTab('admins')}
+                  className={`px-3 sm:px-4 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+                    activeTab === 'admins'
+                      ? 'bg-amber-400 text-stone-950 shadow-md'
+                      : 'text-stone-400 hover:text-white'
+                  }`}
+                >
+                  Admin Team ({adminUsers.length})
                 </button>
               </div>
 
@@ -327,7 +397,9 @@ export function AdminDashboard({ isOpen, onClose, onDestinationsUpdated }: Admin
 
           {/* Main Content Area */}
           <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6">
-            {activeTab === 'bookings' ? (
+            
+            {/* ================= TAB 1: CUSTOMER BOOKINGS ================= */}
+            {activeTab === 'bookings' && (
               <>
                 {/* Metrics Cards */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -521,7 +593,7 @@ export function AdminDashboard({ isOpen, onClose, onDestinationsUpdated }: Admin
                           </div>
 
                           <span className="text-[11px] text-stone-500">
-                            Auto-notifies admin: <strong className="text-stone-400">phaophonna.1@gmail.com</strong>
+                            Auto-notifies admin: <strong className="text-stone-400">{DEFAULT_SUPER_ADMIN_EMAIL}</strong>
                           </span>
                         </div>
                       </div>
@@ -529,8 +601,10 @@ export function AdminDashboard({ isOpen, onClose, onDestinationsUpdated }: Admin
                   )}
                 </div>
               </>
-            ) : (
-              /* TAB 2: DESTINATIONS & PRICING MANAGER */
+            )}
+
+            {/* ================= TAB 2: DESTINATIONS & PRICING ENGINE ================= */}
+            {activeTab === 'destinations' && (
               <div className="space-y-6">
                 <div className="flex items-center justify-between bg-stone-950/70 p-4 rounded-xl border border-stone-800">
                   <div>
@@ -658,39 +732,6 @@ export function AdminDashboard({ isOpen, onClose, onDestinationsUpdated }: Admin
                         onChange={(e) => setDestForm({ ...destForm, heroImage: e.target.value })}
                         className="w-full px-3 py-2 bg-stone-900 border border-stone-800 rounded-lg text-xs text-white focus:outline-none focus:border-amber-400"
                       />
-                    </div>
-
-                    {/* Preset Image suggestions */}
-                    <div>
-                      <span className="text-[11px] text-stone-500 block mb-1.5">
-                        Or pick from curated luxury image presets:
-                      </span>
-                      <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
-                        {[
-                          { name: 'Kyoto Zen', url: 'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&w=1200&q=80' },
-                          { name: 'Tokyo Neon', url: 'https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=1200&q=80' },
-                          { name: 'Bali Estate', url: 'https://images.unsplash.com/photo-1537996194471-e657df975ab4?auto=format&fit=crop&w=1200&q=80' },
-                          { name: 'Angkor Wat', url: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=80' },
-                          { name: 'Halong Bay', url: 'https://images.unsplash.com/photo-1528127269322-539801943592?auto=format&fit=crop&w=1200&q=80' },
-                          { name: 'Himalayas', url: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80' },
-                        ].map((preset) => (
-                          <button
-                            type="button"
-                            key={preset.name}
-                            onClick={() => setDestForm({ ...destForm, heroImage: preset.url })}
-                            className="text-left group cursor-pointer"
-                          >
-                            <img
-                              src={preset.url}
-                              alt={preset.name}
-                              className="w-full h-12 object-cover rounded border border-stone-800 group-hover:border-amber-400 transition-colors"
-                            />
-                            <span className="text-[10px] text-stone-400 group-hover:text-amber-400 truncate block mt-0.5">
-                              {preset.name}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
                     </div>
 
                     <div className="flex justify-end gap-3 pt-3 border-t border-stone-800">
@@ -828,6 +869,179 @@ export function AdminDashboard({ isOpen, onClose, onDestinationsUpdated }: Admin
                       </div>
                     </div>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {/* ================= TAB 3: ADMIN TEAM & ROLES (PROTECTED SUPER ADMIN) ================= */}
+            {activeTab === 'admins' && (
+              <div className="space-y-6">
+                <div className="bg-stone-950 border border-amber-400/30 rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-2 text-amber-400 font-bold text-sm mb-1">
+                      <ShieldCheck className="w-4 h-4" /> Administrative Hierarchy & Access Policy
+                    </div>
+                    <p className="text-xs text-stone-300 max-w-2xl leading-relaxed">
+                      Default Super Admin (<strong className="text-white">{DEFAULT_SUPER_ADMIN_EMAIL}</strong>) is permanently protected and <strong>cannot be deleted by any user or administrator</strong>. Only the default admin has the authority to create new secondary administrators with email & password.
+                    </p>
+                  </div>
+
+                  {isDefaultSuperAdmin && (
+                    <button
+                      onClick={() => setIsAddingAdmin(!isAddingAdmin)}
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-amber-400 hover:bg-amber-300 text-stone-950 font-bold text-xs rounded-xl transition-all cursor-pointer shadow-lg shrink-0"
+                    >
+                      <UserPlus className="w-4 h-4" /> {isAddingAdmin ? 'Close Form' : 'Create New Admin'}
+                    </button>
+                  )}
+                </div>
+
+                {adminActionError && (
+                  <div className="p-3 rounded-lg bg-rose-950/40 border border-rose-500/30 text-xs text-rose-200 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-rose-400" />
+                    <span>{adminActionError}</span>
+                  </div>
+                )}
+
+                {/* Create Secondary Admin Form */}
+                {isAddingAdmin && isDefaultSuperAdmin && (
+                  <form
+                    onSubmit={handleCreateAdmin}
+                    className="bg-stone-950 border border-stone-800 rounded-xl p-5 space-y-4"
+                  >
+                    <div className="flex items-center gap-2 text-white font-serif font-bold text-sm pb-2 border-b border-stone-800">
+                      <UserPlus className="w-4 h-4 text-amber-400" /> Register Secondary Administrator Account
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-xs text-stone-400 mb-1">Admin Full Name</label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="e.g. Kenji Sato"
+                          value={newAdminName}
+                          onChange={(e) => setNewAdminName(e.target.value)}
+                          className="w-full px-3 py-2 bg-stone-900 border border-stone-800 rounded-lg text-xs text-white focus:outline-none focus:border-amber-400"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs text-stone-400 mb-1">Admin Email Address *</label>
+                        <input
+                          type="email"
+                          required
+                          placeholder="kenji.sato@asiadmc.travel"
+                          value={newAdminEmail}
+                          onChange={(e) => setNewAdminEmail(e.target.value)}
+                          className="w-full px-3 py-2 bg-stone-900 border border-stone-800 rounded-lg text-xs text-white focus:outline-none focus:border-amber-400"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs text-stone-400 mb-1">Initial Password (min 6 chars) *</label>
+                        <input
+                          type="password"
+                          required
+                          minLength={6}
+                          placeholder="••••••••"
+                          value={newAdminPassword}
+                          onChange={(e) => setNewAdminPassword(e.target.value)}
+                          className="w-full px-3 py-2 bg-stone-900 border border-stone-800 rounded-lg text-xs text-white focus:outline-none focus:border-amber-400"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end gap-3 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsAddingAdmin(false)}
+                        className="px-4 py-2 bg-stone-900 text-stone-400 hover:text-white text-xs rounded-lg transition-colors cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-5 py-2 bg-amber-400 hover:bg-amber-300 text-stone-950 font-bold text-xs rounded-lg transition-colors cursor-pointer shadow-md"
+                      >
+                        Create Administrator
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {/* Admins Table */}
+                <div className="bg-stone-950 border border-stone-800 rounded-xl overflow-hidden">
+                  <div className="px-5 py-3.5 bg-stone-900/60 border-b border-stone-800 text-xs font-semibold text-stone-400 flex items-center justify-between">
+                    <span>Authorized System Administrators</span>
+                    <span>Role & Security Status</span>
+                  </div>
+
+                  <div className="divide-y divide-stone-800/80">
+                    {adminUsers.map((admin) => {
+                      const isDefault = admin.email.toLowerCase() === DEFAULT_SUPER_ADMIN_EMAIL.toLowerCase();
+
+                      return (
+                        <div
+                          key={admin.uid || admin.email}
+                          className={`p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                            isDefault ? 'bg-amber-400/5' : 'hover:bg-stone-900/30'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs ${
+                              isDefault ? 'bg-amber-400 text-stone-950' : 'bg-stone-800 text-stone-200'
+                            }`}>
+                              {admin.displayName ? admin.displayName.charAt(0).toUpperCase() : 'A'}
+                            </div>
+
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium text-white text-xs sm:text-sm">
+                                  {admin.displayName}
+                                </span>
+                                {isDefault ? (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-400 text-stone-950">
+                                    <Lock className="w-3 h-3" /> DEFAULT SUPER ADMIN
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-stone-800 text-stone-300 border border-stone-700">
+                                    Secondary Admin
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-xs text-stone-400 font-mono block">
+                                {admin.email}
+                              </span>
+                              {admin.createdBy && (
+                                <span className="text-[10px] text-stone-500 block">
+                                  Created by: {admin.createdBy}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            {isDefault ? (
+                              <div className="flex items-center gap-1.5 text-xs text-amber-400 font-semibold px-3 py-1 bg-amber-400/10 rounded-lg border border-amber-400/20">
+                                <Lock className="w-3.5 h-3.5" /> Immutable & Protected (Cannot Delete)
+                              </div>
+                            ) : (
+                              isDefaultSuperAdmin && (
+                                <button
+                                  onClick={() => handleDeleteAdmin(admin.email)}
+                                  className="inline-flex items-center gap-1 px-3 py-1.5 bg-stone-900 hover:bg-rose-950/60 text-stone-400 hover:text-rose-400 border border-stone-800 hover:border-rose-500/40 rounded-lg text-xs transition-colors cursor-pointer"
+                                  title="Revoke Admin Access"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" /> Revoke Access
+                                </button>
+                              )
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             )}

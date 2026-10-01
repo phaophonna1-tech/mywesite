@@ -2,7 +2,7 @@
   "entities": {
     "User": {
       "title": "User",
-      "description": "Registered customer or administrator profile",
+      "description": "Registered customer or administrator profile with authentication credentials metadata",
       "type": "object",
       "properties": {
         "uid": { "type": "string", "maxLength": 128 },
@@ -10,9 +10,26 @@
         "displayName": { "type": "string", "maxLength": 100 },
         "photoURL": { "type": "string", "maxLength": 500 },
         "role": { "type": "string", "enum": ["customer", "admin"] },
+        "emailVerified": { "type": "boolean" },
+        "isDefaultSuperAdmin": { "type": "boolean" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "passwordHash": { "type": "string", "maxLength": 256 },
         "createdAt": { "type": "string", "maxLength": 50 }
       },
       "required": ["uid", "email", "role"]
+    },
+    "VerificationCode": {
+      "title": "VerificationCode",
+      "description": "6-digit OTP verification codes sent to customer/admin email for sign-up and password reset",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "maxLength": 254 },
+        "code": { "type": "string", "maxLength": 10 },
+        "purpose": { "type": "string", "enum": ["register", "reset_password"] },
+        "expiresAt": { "type": "number" },
+        "createdAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["email", "code", "purpose", "expiresAt"]
     },
     "Booking": {
       "title": "Booking",
@@ -64,19 +81,23 @@
   "firestore": {
     "/users/{userId}": {
       "schema": "User",
-      "description": "User profile documents keyed by Firebase Auth UID"
+      "description": "User profile documents keyed by UID. Default super admin cannot be deleted."
+    },
+    "/verificationCodes/{codeId}": {
+      "schema": "VerificationCode",
+      "description": "6-digit OTP verification codes for email authentication and password reset."
     },
     "/admins/{userId}": {
       "schema": "User",
-      "description": "Marker collection identifying system administrators"
+      "description": "Marker collection identifying system administrators. Only default super admin can assign."
     },
     "/bookings/{bookingId}": {
       "schema": "Booking",
-      "description": "Booking requests and reservations keyed by bookingId"
+      "description": "Booking requests and reservations keyed by bookingId."
     },
     "/destinations/{destinationId}": {
       "schema": "CustomDestination",
-      "description": "Custom destinations and pricing overrides created by administrators"
+      "description": "Custom destinations and pricing overrides created by administrators."
     }
   }
 }
