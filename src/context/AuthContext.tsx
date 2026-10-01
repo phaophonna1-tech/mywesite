@@ -118,7 +118,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signOutUser = async () => {
     setUser(null);
-    localStorage.removeItem('ad_dmc_active_session');
+    try {
+      localStorage.removeItem('ad_dmc_active_session');
+      localStorage.removeItem('ad_dmc_facebook_saved_session');
+      localStorage.removeItem('ad_dmc_google_saved_session');
+      localStorage.removeItem('ad_dmc_github_saved_session');
+    } catch {
+      // ignore
+    }
     await signOutAuth();
   };
 

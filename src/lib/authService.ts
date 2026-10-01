@@ -514,6 +514,14 @@ export async function loginWithProvider(
 
 export async function signOutAuth(): Promise<void> {
   try {
+    localStorage.removeItem('ad_dmc_active_session');
+    localStorage.removeItem('ad_dmc_facebook_saved_session');
+    localStorage.removeItem('ad_dmc_google_saved_session');
+    localStorage.removeItem('ad_dmc_github_saved_session');
+  } catch {
+    // ignore
+  }
+  try {
     await fbSignOut(auth);
   } catch (err) {
     console.warn('fbSignOut error:', err);
