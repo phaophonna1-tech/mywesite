@@ -62,7 +62,7 @@ export function SocialAuthPopupModal({
           ],
           defaultAccount: {
             name: 'Phaophonna',
-            email: 'phaophonna.1@gmail.com',
+            email: 'phaophonna@gmail.com',
           },
         };
       case 'facebook':
@@ -83,7 +83,7 @@ export function SocialAuthPopupModal({
           ],
           defaultAccount: {
             name: 'Phaophonna',
-            email: 'phaophonna.1@gmail.com',
+            email: 'phaophonna@gmail.com',
           },
         };
       case 'github':
@@ -104,7 +104,7 @@ export function SocialAuthPopupModal({
           ],
           defaultAccount: {
             name: 'Phaophonna',
-            email: 'phaophonna.1@gmail.com',
+            email: 'phaophonna@gmail.com',
           },
         };
     }
@@ -123,16 +123,16 @@ export function SocialAuthPopupModal({
     setTimeout(() => {
       setLoading(false);
       const chosenEmail = (accountEmail.trim() || info.defaultAccount.email).toLowerCase();
-      const chosenName = accountName.trim() || info.defaultAccount.name;
-      const isSuper = chosenEmail === 'phaophonna.1@gmail.com';
+      const chosenName = accountName.trim() || (accountEmail.trim() && accountEmail.includes('@') ? accountEmail.split('@')[0] : info.defaultAccount.name);
 
+      // Customer third-party sign-in is ALWAYS customer role with non-admin privileges
       const userAccount: UserAccount = {
         uid: `${provider}-${Date.now()}`,
         email: chosenEmail,
         displayName: chosenName,
         provider: provider,
-        role: isSuper ? 'admin' : 'customer',
-        isDefaultSuperAdmin: isSuper,
+        role: 'customer',
+        isDefaultSuperAdmin: false,
         emailVerified: true,
         createdAt: new Date().toISOString(),
       };
@@ -200,7 +200,7 @@ export function SocialAuthPopupModal({
                   Select an account to sign in:
                 </span>
 
-                {/* Primary Default Account Card */}
+                {/* Primary Customer Account Card */}
                 <button
                   onClick={() => handleSelectAccount(info.defaultAccount.name, info.defaultAccount.email)}
                   className="w-full flex items-center justify-between p-3.5 rounded-xl bg-stone-950 hover:bg-stone-800/90 border border-stone-800 hover:border-amber-400/40 transition-all cursor-pointer text-left group"
@@ -217,7 +217,7 @@ export function SocialAuthPopupModal({
                         {info.defaultAccount.email}
                       </span>
                       <span className="text-[10px] text-amber-400/90 flex items-center gap-1 mt-0.5">
-                        <Check className="w-3 h-3 text-emerald-400" /> Default Linked {info.providerName} Account
+                        <Check className="w-3 h-3 text-emerald-400" /> Customer {info.providerName} Account
                       </span>
                     </div>
                   </div>
@@ -260,8 +260,8 @@ export function SocialAuthPopupModal({
 
                   <button
                     onClick={() => {
-                      const finalName = accountName.trim() || (accountEmail.includes('@') ? accountEmail.split('@')[0] : 'Traveler');
                       const finalEmail = accountEmail.trim() || info.defaultAccount.email;
+                      const finalName = accountName.trim() || (accountEmail.trim() && accountEmail.includes('@') ? accountEmail.split('@')[0] : info.defaultAccount.name);
                       handleSelectAccount(finalName, finalEmail);
                     }}
                     className="w-full py-2.5 bg-amber-400 hover:bg-amber-300 text-stone-950 text-xs font-bold rounded-lg transition-colors cursor-pointer shadow-md flex items-center justify-center gap-1.5"
@@ -286,7 +286,7 @@ export function SocialAuthPopupModal({
                       {accountEmail || info.defaultAccount.email}
                     </span>
                     <span className="text-[10px] text-stone-500 uppercase tracking-wider block mt-0.5">
-                      Verified via {info.providerName}
+                      Customer Profile • Verified via {info.providerName}
                     </span>
                   </div>
                 </div>
@@ -306,7 +306,7 @@ export function SocialAuthPopupModal({
                 </div>
 
                 <div className="p-3 bg-stone-950/60 rounded-xl border border-stone-800/80 text-[11px] text-stone-400 leading-relaxed">
-                  Your profile name and email will be linked directly to your travel dossiers and booking confirmation receipts.
+                  You are authenticating as a traveler client. Your bookings and requests will be saved under this customer account.
                 </div>
 
                 <div className="flex gap-2 pt-2">

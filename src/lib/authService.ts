@@ -14,6 +14,7 @@ import {
   GoogleAuthProvider, 
   FacebookAuthProvider, 
   GithubAuthProvider,
+  sendPasswordResetEmail,
   signOut as fbSignOut
 } from 'firebase/auth';
 import { db, auth } from './firebase';
@@ -138,7 +139,16 @@ export async function sendVerificationCode(
     console.warn('Firestore verificationCode error (using local):', err);
   }
 
-  // 3. Prepare direct email link
+  // 3. Try Firebase official password reset dispatch
+  if (purpose === 'reset_password') {
+    try {
+      await sendPasswordResetEmail(auth, email);
+    } catch (err: any) {
+      console.warn('Firebase sendPasswordResetEmail notice:', err?.message);
+    }
+  }
+
+  // 4. Prepare direct email link
   const subject = encodeURIComponent(
     `[Asia Destination DMC] Your 6-Digit Verification Code: ${code}`
   );
@@ -395,7 +405,6 @@ export async function loginWithProvider(
     const fbUser = result.user;
     const finalEmail = fbUser.email || selectedAccount?.email || `${providerName}-user@example.com`;
     const finalName = fbUser.displayName || selectedAccount?.displayName || finalEmail.split('@')[0];
-    const isSuper = finalEmail.toLowerCase() === DEFAULT_SUPER_ADMIN_EMAIL.toLowerCase();
 
     const userAccount: UserAccount = {
       uid: fbUser.uid,
@@ -403,8 +412,8 @@ export async function loginWithProvider(
       displayName: finalName,
       photoURL: fbUser.photoURL || selectedAccount?.photoURL || undefined,
       provider: providerName,
-      role: isSuper ? 'admin' : 'customer',
-      isDefaultSuperAdmin: isSuper,
+      role: 'customer',
+      isDefaultSuperAdmin: false,
       emailVerified: fbUser.emailVerified || true,
       createdAt: new Date().toISOString(),
     };
@@ -420,7 +429,6 @@ export async function loginWithProvider(
     const finalName = selectedAccount?.displayName || (
       finalEmail.includes('@') ? finalEmail.split('@')[0] : `${providerName.charAt(0).toUpperCase() + providerName.slice(1)} Traveler`
     );
-    const isSuper = finalEmail.toLowerCase() === DEFAULT_SUPER_ADMIN_EMAIL.toLowerCase();
 
     const authorizedUser: UserAccount = {
       uid: selectedAccount?.uid || `${providerName}-${Date.now()}`,
@@ -428,8 +436,8 @@ export async function loginWithProvider(
       displayName: finalName,
       photoURL: selectedAccount?.photoURL,
       provider: providerName,
-      role: isSuper ? 'admin' : 'customer',
-      isDefaultSuperAdmin: isSuper,
+      role: 'customer',
+      isDefaultSuperAdmin: false,
       emailVerified: true,
       createdAt: new Date().toISOString(),
     };

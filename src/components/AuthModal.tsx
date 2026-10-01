@@ -191,7 +191,8 @@ export function AuthModal({ isOpen, onClose, defaultRole = 'customer' }: AuthMod
       setIsOtpSent(true);
       setGeneratedOtpDisplay(res.code);
       setMailtoUrl(res.mailtoUrl);
-      setSuccessMsg(`Password reset code sent to ${email}.`);
+      setOtpCode(res.code);
+      setSuccessMsg(`Reset code sent! The 6-digit code has been prepared and auto-filled below.`);
     } catch (err: any) {
       setError(err?.message || 'Failed to dispatch reset code.');
     } finally {
@@ -244,13 +245,13 @@ export function AuthModal({ isOpen, onClose, defaultRole = 'customer' }: AuthMod
   const handleSocialSuccess = async (account: UserAccount) => {
     try {
       setLoading(true);
-      await loginSocial(
-        account.uid.startsWith('google')
-          ? 'google'
-          : account.uid.startsWith('facebook')
-          ? 'facebook'
-          : 'github'
-      );
+      const prov: 'google' | 'facebook' | 'github' = account.uid.startsWith('google')
+        ? 'google'
+        : account.uid.startsWith('facebook')
+        ? 'facebook'
+        : 'github';
+
+      await loginSocial(prov, account);
       localStorage.setItem('ad_dmc_active_session', JSON.stringify(account));
       setActiveSocialProvider(null);
       setSuccessMsg(`Welcome, ${account.displayName}! Authenticated via ${activeSocialProvider?.toUpperCase()}.`);
@@ -670,6 +671,47 @@ export function AuthModal({ isOpen, onClose, defaultRole = 'customer' }: AuthMod
                 </form>
               ) : (
                 <form onSubmit={handleVerifyAndResetPassword} className="space-y-3.5">
+                  {/* Generated code card */}
+                  {generatedOtpDisplay && (
+                    <div className="p-3 bg-amber-400/10 border border-amber-400/30 rounded-xl text-left">
+                      <div className="flex items-center justify-between text-xs text-amber-300 font-bold mb-1">
+                        <span>Authentication Code for {email}</span>
+                        {mailtoUrl && (
+                          <a
+                            href={mailtoUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[11px] underline hover:text-amber-200 flex items-center gap-1 cursor-pointer"
+                          >
+                            Open Mail App <ExternalLink className="w-3 h-3" />
+                          </a>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between bg-stone-950 px-3 py-2 rounded-lg border border-amber-400/30 my-1.5">
+                        <span className="font-mono text-lg font-bold text-amber-400 tracking-[0.25em]">
+                          {generatedOtpDisplay}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOtpCode(generatedOtpDisplay);
+                            try {
+                              navigator.clipboard.writeText(generatedOtpDisplay);
+                            } catch {
+                              // ignore
+                            }
+                          }}
+                          className="px-2.5 py-1 bg-amber-400 hover:bg-amber-300 text-stone-950 text-[11px] font-bold rounded cursor-pointer transition-colors"
+                        >
+                          Auto-fill
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-stone-400">
+                        Code pre-filled below and sent to your email ({email}).
+                      </p>
+                    </div>
+                  )}
+
                   <div>
                     <label className="block text-xs text-stone-400 mb-1">Enter 6-Digit Reset Code</label>
                     <input
