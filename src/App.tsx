@@ -41,11 +41,14 @@ function MainApp() {
 
   const reloadDestinations = () => {
     const customList = getLocalCustomDestinations();
-    const merged = [
-      ...customList,
-      ...defaultDestinations.filter((d) => !customList.some((c) => c.id === d.id)),
-    ];
-    setAllDestinations(merged);
+    const map = new Map<string, Destination>();
+    for (const d of defaultDestinations) {
+      if (d && d.id) map.set(d.id, d);
+    }
+    for (const d of customList) {
+      if (d && d.id) map.set(d.id, d);
+    }
+    setAllDestinations(Array.from(map.values()));
   };
 
   useEffect(() => {

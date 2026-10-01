@@ -112,7 +112,7 @@ export function DestinationModal({
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {destination.highlights.map((hl, idx) => (
-                  <div key={idx} className="flex items-start gap-2.5 p-3 rounded-lg bg-stone-950/50 border border-stone-800/80 text-xs sm:text-sm text-stone-300">
+                  <div key={`hl-${idx}`} className="flex items-start gap-2.5 p-3 rounded-lg bg-stone-950/50 border border-stone-800/80 text-xs sm:text-sm text-stone-300">
                     <Check className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                     <span>{hl}</span>
                   </div>
@@ -126,10 +126,10 @@ export function DestinationModal({
                 Detailed Itinerary
               </h3>
               <div className="space-y-4">
-                {destination.itinerary.map((day) => (
-                  <div key={day.day} className="flex gap-4 items-start pb-4 border-b border-stone-800/60 last:border-0">
+                {destination.itinerary.map((day, dIdx) => (
+                  <div key={`itin-${day.day || dIdx}-${dIdx}`} className="flex gap-4 items-start pb-4 border-b border-stone-800/60 last:border-0">
                     <div className="w-16 shrink-0 font-mono text-xs font-bold text-amber-400 pt-0.5">
-                      Day 0{day.day}
+                      Day 0{day.day || dIdx + 1}
                     </div>
                     <div>
                       <h4 className="text-sm font-semibold text-white mb-1">{day.title}</h4>
@@ -147,7 +147,7 @@ export function DestinationModal({
               </h3>
               <ul className="space-y-2 text-xs text-stone-300">
                 {destination.included.map((item, idx) => (
-                  <li key={idx} className="flex items-center gap-2">
+                  <li key={`inc-${idx}`} className="flex items-center gap-2">
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
                     <span>{item}</span>
                   </li>

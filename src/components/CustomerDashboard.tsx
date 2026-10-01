@@ -190,9 +190,9 @@ export function CustomerDashboard({ isOpen, onClose, onNewBookingClick }: Custom
                 </button>
               </div>
             ) : (
-              bookings.map((booking) => (
+              bookings.map((booking, idx) => (
                 <div
-                  key={booking.id}
+                  key={`cb-${booking.id || booking.code || idx}-${idx}`}
                   className="bg-stone-950 border border-stone-800 rounded-xl p-5 hover:border-stone-700 transition-all"
                 >
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-stone-800/80">

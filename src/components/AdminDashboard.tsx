@@ -483,9 +483,9 @@ export function AdminDashboard({ isOpen, onClose, onDestinationsUpdated }: Admin
                       <p className="text-sm text-stone-400">No bookings match the selected criteria.</p>
                     </div>
                   ) : (
-                    filteredBookings.map((b) => (
+                    filteredBookings.map((b, idx) => (
                       <div
-                        key={b.id}
+                        key={`b-${b.id || b.code || idx}-${idx}`}
                         className="bg-stone-950 border border-stone-800 rounded-xl p-5 hover:border-stone-700 transition-all space-y-4"
                       >
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-stone-800/80">
@@ -754,9 +754,9 @@ export function AdminDashboard({ isOpen, onClose, onDestinationsUpdated }: Admin
 
                 {/* Destinations List with Price & Image Editors */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {destinationsList.map((dest) => (
+                  {destinationsList.map((dest, idx) => (
                     <div
-                      key={dest.id}
+                      key={`dest-${dest.id}-${idx}`}
                       className="bg-stone-950 border border-stone-800 rounded-xl overflow-hidden flex flex-col hover:border-stone-700 transition-all"
                     >
                       <div className="relative h-44 group">
@@ -978,12 +978,12 @@ export function AdminDashboard({ isOpen, onClose, onDestinationsUpdated }: Admin
                   </div>
 
                   <div className="divide-y divide-stone-800/80">
-                    {adminUsers.map((admin) => {
+                    {adminUsers.map((admin, idx) => {
                       const isDefault = admin.email.toLowerCase() === DEFAULT_SUPER_ADMIN_EMAIL.toLowerCase();
 
                       return (
                         <div
-                          key={admin.uid || admin.email}
+                          key={`admin-${admin.uid || admin.email || idx}-${idx}`}
                           className={`p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
                             isDefault ? 'bg-amber-400/5' : 'hover:bg-stone-900/30'
                           }`}

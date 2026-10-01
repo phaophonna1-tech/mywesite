@@ -234,10 +234,23 @@ export function AuthModal({ isOpen, onClose, defaultRole = 'customer' }: AuthMod
     }
   };
 
-  // 5. Social Login Handler (Opens authentic OAuth popup window for user consent and acceptance)
-  const handleSocial = (provider: SocialProvider) => {
+  // 5. Social Login Handler (Tries authentic browser popup window with Facebook/Google/GitHub)
+  const handleSocial = async (provider: SocialProvider) => {
     setError(null);
-    setActiveSocialProvider(provider);
+    setLoading(true);
+
+    try {
+      // 1. Direct browser OAuth popup with Facebook / Google / GitHub
+      const account = await loginSocial(provider);
+      setSuccessMsg(`Welcome, ${account.displayName}! Authenticated via ${provider.toUpperCase()}.`);
+      setTimeout(() => onClose(), 800);
+    } catch (err: any) {
+      console.warn('Direct OAuth popup note:', err?.code, err?.message);
+      // Popup blocked or provider requires fallback modal dialog
+      setActiveSocialProvider(provider);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSocialSuccess = async (account: UserAccount) => {

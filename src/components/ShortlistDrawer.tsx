@@ -83,9 +83,9 @@ export function ShortlistDrawer({
                 </button>
               </div>
             ) : (
-              savedDestinations.map((dest) => (
+              savedDestinations.map((dest, idx) => (
                 <div
-                  key={dest.id}
+                  key={`${dest.id}-${idx}`}
                   className="flex items-center gap-3 p-3 bg-stone-950 border border-stone-800 rounded-xl group hover:border-stone-700 transition-colors"
                 >
                   <div className="w-16 h-16 rounded-lg overflow-hidden shrink-0 bg-stone-900">

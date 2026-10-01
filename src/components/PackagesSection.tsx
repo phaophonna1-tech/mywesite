@@ -82,7 +82,7 @@ export function PackagesSection({ onSelectPackageForPlanner }: PackagesSectionPr
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-6">
                   {activePackage.schedule.map((item, idx) => (
                     <button
-                      key={idx}
+                      key={`pkg-sched-${activePackage.id}-${item.day || idx}-${idx}`}
                       onClick={() => setSelectedDayIdx(idx)}
                       className={`p-3 rounded-lg text-left border transition-all cursor-pointer ${
                         selectedDayIdx === idx

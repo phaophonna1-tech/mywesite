@@ -393,11 +393,19 @@ export async function loginWithProvider(
 ): Promise<UserAccount> {
   let provider;
   if (providerName === 'google') {
-    provider = new GoogleAuthProvider();
+    const gp = new GoogleAuthProvider();
+    gp.addScope('email');
+    gp.addScope('profile');
+    provider = gp;
   } else if (providerName === 'facebook') {
-    provider = new FacebookAuthProvider();
+    const fp = new FacebookAuthProvider();
+    fp.addScope('email');
+    fp.addScope('public_profile');
+    provider = fp;
   } else {
-    provider = new GithubAuthProvider();
+    const ghp = new GithubAuthProvider();
+    ghp.addScope('user:email');
+    provider = ghp;
   }
 
   try {
@@ -424,6 +432,11 @@ export async function loginWithProvider(
 
     return userAccount;
   } catch (err: any) {
+    if (!selectedAccount) {
+      console.warn(`signInWithPopup failed for ${providerName}:`, err?.code, err?.message);
+      throw err;
+    }
+
     // When popup is handled via the dedicated OAuth dialog or restricted sandbox
     const finalEmail = selectedAccount?.email || `${providerName}.user@gmail.com`;
     const finalName = selectedAccount?.displayName || (
