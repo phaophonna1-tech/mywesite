@@ -1,10 +1,13 @@
-import { useState, useId } from 'react';
+import { useState, useId, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, Calendar, Users, MapPin, Check, ShieldCheck, Clock, CheckCircle } from 'lucide-react';
 import { DESTINATIONS } from '../data/destinations';
-import { BookingFormData } from '../types';
+import { BookingFormData, Destination } from '../types';
+import { useAuth } from '../context/AuthContext';
+import { createBooking, BookingRecord } from '../lib/bookingService';
 
 interface TripPlannerProps {
+  destinations?: Destination[];
   selectedDestinationId?: string;
   onBookingSuccess: (confirmation: {
     code: string;
@@ -12,29 +15,49 @@ interface TripPlannerProps {
     total: number;
     travelers: number;
     email: string;
+    bookingRecord?: BookingRecord;
   }) => void;
 }
 
-export function TripPlanner({ selectedDestinationId, onBookingSuccess }: TripPlannerProps) {
+export function TripPlanner({ destinations = DESTINATIONS, selectedDestinationId, onBookingSuccess }: TripPlannerProps) {
   const formId = useId();
+  const { user } = useAuth();
+  const availableDestinations = destinations && destinations.length > 0 ? destinations : DESTINATIONS;
+
   const [formData, setFormData] = useState<BookingFormData>({
-    destinationId: selectedDestinationId || DESTINATIONS[0].id,
+    destinationId: selectedDestinationId || availableDestinations[0].id,
     travelDate: '2026-06-15',
     travelers: 2,
     travelStyle: 'Signature Luxury',
     durationDays: 8,
-    name: '',
-    email: '',
+    name: user?.displayName || '',
+    email: user?.email || '',
     notes: '',
     includePrivateGuide: true,
     includeCarbonOffset: true,
   });
 
+  useEffect(() => {
+    if (user) {
+      setFormData((prev) => ({
+        ...prev,
+        name: prev.name || user.displayName || '',
+        email: prev.email || user.email || '',
+      }));
+    }
+  }, [user]);
+
   const [formErrors, setFormErrors] = useState<{ name?: string; email?: string }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Sync if selectedDestinationId changes from props
-  const currentDest = DESTINATIONS.find((d) => d.id === formData.destinationId) || DESTINATIONS[0];
+  // Sync if selected destination changes from props
+  useEffect(() => {
+    if (selectedDestinationId) {
+      setFormData((prev) => ({ ...prev, destinationId: selectedDestinationId }));
+    }
+  }, [selectedDestinationId]);
+
+  const currentDest = availableDestinations.find((d) => d.id === formData.destinationId) || availableDestinations[0];
 
   // Dynamic price calculation
   const baseRate = currentDest.priceFrom;
@@ -44,7 +67,7 @@ export function TripPlanner({ selectedDestinationId, onBookingSuccess }: TripPla
   const perPersonEstimate = Math.round((baseRate * styleMultiplier) + guideAddon + carbonAddon);
   const totalEstimate = perPersonEstimate * formData.travelers;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const errors: { name?: string; email?: string } = {};
     if (!formData.name.trim()) errors.name = 'Please provide your full name';
@@ -58,19 +81,36 @@ export function TripPlanner({ selectedDestinationId, onBookingSuccess }: TripPla
     setFormErrors({});
     setIsSubmitting(true);
 
-    setTimeout(() => {
-      setIsSubmitting(false);
-      const generatedCode = `AD-DMC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    try {
+      const savedBooking = await createBooking({
+        userId: user?.uid || `guest-${Date.now()}`,
+        userEmail: formData.email,
+        userName: formData.name,
+        destinationId: currentDest.id,
+        destinationName: currentDest.name,
+        travelers: formData.travelers,
+        tier: formData.travelStyle,
+        durationDays: formData.durationDays,
+        estimatedTotal: totalEstimate,
+        startDate: formData.travelDate,
+        notes: formData.notes,
+      });
+
       onBookingSuccess({
-        code: generatedCode,
+        code: savedBooking.code,
         destinationName: currentDest.name,
         total: totalEstimate,
         travelers: formData.travelers,
         email: formData.email,
+        bookingRecord: savedBooking,
       });
-      // Reset sensitive fields
-      setFormData((prev) => ({ ...prev, name: '', email: '', notes: '' }));
-    }, 700);
+
+      setFormData((prev) => ({ ...prev, notes: '' }));
+    } catch (err) {
+      console.error('Booking submission error:', err);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (

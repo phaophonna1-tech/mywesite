@@ -1,0 +1,82 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Registered customer or administrator profile",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 254 },
+        "displayName": { "type": "string", "maxLength": 100 },
+        "photoURL": { "type": "string", "maxLength": 500 },
+        "role": { "type": "string", "enum": ["customer", "admin"] },
+        "createdAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Booking": {
+      "title": "Booking",
+      "description": "Itinerary booking inquiry created by a customer",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "code": { "type": "string", "maxLength": 50 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "userEmail": { "type": "string", "maxLength": 254 },
+        "userName": { "type": "string", "maxLength": 100 },
+        "destinationId": { "type": "string", "maxLength": 100 },
+        "destinationName": { "type": "string", "maxLength": 150 },
+        "travelers": { "type": "number" },
+        "tier": { "type": "string", "maxLength": 50 },
+        "durationDays": { "type": "number" },
+        "estimatedTotal": { "type": "number" },
+        "startDate": { "type": "string", "maxLength": 50 },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "status": { "type": "string", "enum": ["pending", "approved", "paid", "cancelled"] },
+        "adminNotes": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "string", "maxLength": 50 },
+        "updatedAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["code", "userId", "userEmail", "userName", "destinationName", "travelers", "estimatedTotal", "status"]
+    },
+    "CustomDestination": {
+      "title": "CustomDestination",
+      "description": "Destinations managed and added by administrators",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 150 },
+        "country": { "type": "string", "maxLength": 100 },
+        "region": { "type": "string", "maxLength": 100 },
+        "tagline": { "type": "string", "maxLength": 250 },
+        "heroImage": { "type": "string", "maxLength": 1000 },
+        "priceFrom": { "type": "number" },
+        "duration": { "type": "string", "maxLength": 50 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "bestSeason": { "type": "string", "maxLength": 100 },
+        "badge": { "type": "string", "maxLength": 50 },
+        "createdAt": { "type": "string", "maxLength": 50 },
+        "updatedAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["name", "country", "region", "heroImage", "priceFrom"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile documents keyed by Firebase Auth UID"
+    },
+    "/admins/{userId}": {
+      "schema": "User",
+      "description": "Marker collection identifying system administrators"
+    },
+    "/bookings/{bookingId}": {
+      "schema": "Booking",
+      "description": "Booking requests and reservations keyed by bookingId"
+    },
+    "/destinations/{destinationId}": {
+      "schema": "CustomDestination",
+      "description": "Custom destinations and pricing overrides created by administrators"
+    }
+  }
+}

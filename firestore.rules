@@ -1,0 +1,104 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isSuperAdminEmail() {
+      return isSignedIn() && request.auth.token.email == "phaophonna.1@gmail.com";
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        isSuperAdminEmail() ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role']) &&
+             data.keys().hasOnly(['uid', 'email', 'displayName', 'photoURL', 'role', 'createdAt']) &&
+             data.uid is string && data.uid.size() <= 128 &&
+             data.email is string && data.email.size() <= 254 &&
+             data.role in ['customer', 'admin'];
+    }
+
+    function isValidBooking(data) {
+      return data.keys().hasAll(['code', 'userId', 'userEmail', 'userName', 'destinationName', 'travelers', 'estimatedTotal', 'status']) &&
+             data.keys().hasOnly(['id', 'code', 'userId', 'userEmail', 'userName', 'destinationId', 'destinationName', 'travelers', 'tier', 'durationDays', 'estimatedTotal', 'startDate', 'notes', 'status', 'adminNotes', 'createdAt', 'updatedAt']) &&
+             data.code is string && data.code.size() <= 50 &&
+             data.userId is string && data.userId.size() <= 128 &&
+             data.userEmail is string && data.userEmail.size() <= 254 &&
+             data.userName is string && data.userName.size() <= 100 &&
+             data.destinationName is string && data.destinationName.size() <= 150 &&
+             data.travelers is number && data.travelers > 0 && data.travelers <= 100 &&
+             data.estimatedTotal is number && data.estimatedTotal >= 0 &&
+             data.status in ['pending', 'approved', 'paid', 'cancelled'];
+    }
+
+    function isValidDestination(data) {
+      return data.keys().hasAll(['name', 'country', 'region', 'heroImage', 'priceFrom']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 150 &&
+             data.country is string && data.country.size() > 0 && data.country.size() <= 100 &&
+             data.region is string && data.region.size() > 0 && data.region.size() <= 100 &&
+             data.heroImage is string && data.heroImage.size() <= 1000 &&
+             data.priceFrom is number && data.priceFrom >= 0;
+    }
+
+    // User profiles
+    match /users/{userId} {
+      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isSignedIn() && request.auth.uid == userId && isValidUser(request.resource.data) &&
+                    (request.resource.data.role == 'customer' || isSuperAdminEmail());
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        (request.auth.uid == userId && isValidUser(request.resource.data) &&
+         request.resource.data.role == resource.data.role)
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Admin Markers
+    match /admins/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isSuperAdminEmail();
+    }
+
+    // Bookings collection
+    match /bookings/{bookingId} {
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() &&
+                    request.resource.data.userId == request.auth.uid &&
+                    isValidBooking(request.resource.data) &&
+                    request.resource.data.status == 'pending';
+      allow update: if isSignedIn() && isValidBooking(request.resource.data) && (
+        (isAdmin() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'adminNotes', 'updatedAt'])) ||
+        (resource.data.userId == request.auth.uid &&
+         resource.data.status == 'pending' &&
+         request.resource.data.status == 'cancelled' &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']))
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Custom Destinations
+    match /destinations/{destinationId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin() && (request.resource.data == null || isValidDestination(request.resource.data));
+    }
+  }
+}

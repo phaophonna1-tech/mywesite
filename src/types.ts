@@ -22,6 +22,8 @@ export interface Destination {
     description: string;
   }[];
   included: string[];
+  heroImage?: string;
+  badge?: string;
 }
 
 export interface TravelPackage {

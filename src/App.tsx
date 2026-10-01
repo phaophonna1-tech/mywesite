@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Navbar } from './components/Navbar';
 import { Hero } from './components/Hero';
 import { Metrics } from './components/Metrics';
@@ -12,36 +12,66 @@ import { DestinationModal } from './components/DestinationModal';
 import { VideoModal } from './components/VideoModal';
 import { ShortlistDrawer } from './components/ShortlistDrawer';
 import { ConfirmationModal } from './components/ConfirmationModal';
-import { DESTINATIONS } from './data/destinations';
+import { AuthModal } from './components/AuthModal';
+import { CustomerDashboard } from './components/CustomerDashboard';
+import { AdminDashboard } from './components/AdminDashboard';
+import { DESTINATIONS as defaultDestinations } from './data/destinations';
 import { Destination } from './types';
-import { Bookmark, CheckCircle2 } from 'lucide-react';
+import { getLocalCustomDestinations, BookingRecord } from './lib/bookingService';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { Bookmark, ShieldCheck, UserCheck } from 'lucide-react';
 
-export default function App() {
+function MainApp() {
+  const { user, isAdmin } = useAuth();
   const [shortlist, setShortlist] = useState<string[]>(['angkor', 'kyoto']);
   const [isShortlistOpen, setIsShortlistOpen] = useState(false);
   const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
   const [selectedDestination, setSelectedDestination] = useState<Destination | null>(null);
   const [plannerDestinationId, setPlannerDestinationId] = useState<string>('angkor');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Modals for Customer & Admin
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authDefaultRole, setAuthDefaultRole] = useState<'customer' | 'admin'>('customer');
+  const [isCustomerDashboardOpen, setIsCustomerDashboardOpen] = useState(false);
+  const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
+
+  // Dynamic merged destinations (defaults + custom created by admin)
+  const [allDestinations, setAllDestinations] = useState<Destination[]>(defaultDestinations);
+
+  const reloadDestinations = () => {
+    const customList = getLocalCustomDestinations();
+    const merged = [
+      ...customList,
+      ...defaultDestinations.filter((d) => !customList.some((c) => c.id === d.id)),
+    ];
+    setAllDestinations(merged);
+  };
+
+  useEffect(() => {
+    reloadDestinations();
+  }, []);
+
   const [bookingConfirmation, setBookingConfirmation] = useState<{
     code: string;
     destinationName: string;
     total: number;
     travelers: number;
     email: string;
+    bookingRecord?: BookingRecord;
   } | null>(null);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => {
       setToastMessage((current) => (current === msg ? null : current));
-    }, 2800);
+    }, 3000);
   };
 
   const handleToggleShortlist = (id: string) => {
     setShortlist((prev) => {
       const exists = prev.includes(id);
-      const destName = DESTINATIONS.find((d) => d.id === id)?.name || 'Destination';
+      const destName = allDestinations.find((d) => d.id === id)?.name || 'Destination';
       if (exists) {
         showToast(`Removed ${destName} from your wishlist`);
         return prev.filter((item) => item !== id);
@@ -65,7 +95,7 @@ export default function App() {
   };
 
   const handleSelectPolaroid = (destId: string) => {
-    const found = DESTINATIONS.find((d) => d.id === destId);
+    const found = allDestinations.find((d) => d.id === destId);
     if (found) {
       setSelectedDestination(found);
     }
@@ -73,10 +103,11 @@ export default function App() {
 
   const handleQuickSearch = (destinationQuery: string, _season: string) => {
     if (destinationQuery.trim()) {
-      const found = DESTINATIONS.find((d) =>
-        d.name.toLowerCase().includes(destinationQuery.toLowerCase()) ||
-        d.country.toLowerCase().includes(destinationQuery.toLowerCase()) ||
-        d.region.toLowerCase().includes(destinationQuery.toLowerCase())
+      const found = allDestinations.find(
+        (d) =>
+          d.name.toLowerCase().includes(destinationQuery.toLowerCase()) ||
+          d.country.toLowerCase().includes(destinationQuery.toLowerCase()) ||
+          d.region.toLowerCase().includes(destinationQuery.toLowerCase())
       );
       if (found) {
         setSelectedDestination(found);
@@ -101,7 +132,29 @@ export default function App() {
         shortlistCount={shortlist.length}
         onOpenShortlist={() => setIsShortlistOpen(true)}
         onOpenPlanner={() => handleScrollToSection('planner')}
+        onOpenAuth={() => {
+          setAuthDefaultRole('customer');
+          setIsAuthModalOpen(true);
+        }}
+        onOpenCustomerDashboard={() => setIsCustomerDashboardOpen(true)}
+        onOpenAdminDashboard={() => setIsAdminDashboardOpen(true)}
       />
+
+      {/* Admin Quick Banner if Admin is Logged In */}
+      {isAdmin && (
+        <div className="mt-16 bg-amber-400/10 border-b border-amber-400/20 py-2 px-6 text-center text-xs flex items-center justify-center gap-3">
+          <span className="flex items-center gap-1.5 font-bold text-amber-400">
+            <ShieldCheck className="w-4 h-4" /> Admin Console Active ({user?.email})
+          </span>
+          <span className="text-stone-400 hidden sm:inline">•</span>
+          <button
+            onClick={() => setIsAdminDashboardOpen(true)}
+            className="text-stone-200 hover:text-amber-400 underline font-medium cursor-pointer"
+          >
+            Review Customer Bookings & Manage Destinations
+          </button>
+        </div>
+      )}
 
       {/* Main Content Sections */}
       <main className="flex-1">
@@ -118,7 +171,7 @@ export default function App() {
 
         {/* Curated Destinations Showcase */}
         <DestinationsGrid
-          destinations={DESTINATIONS}
+          destinations={allDestinations}
           shortlist={shortlist}
           onToggleShortlist={handleToggleShortlist}
           onSelectDestination={(dest) => setSelectedDestination(dest)}
@@ -138,8 +191,12 @@ export default function App() {
 
         {/* Interactive Trip Planner & Cost Wizard */}
         <TripPlanner
+          destinations={allDestinations}
           selectedDestinationId={plannerDestinationId}
-          onBookingSuccess={(confirmation) => setBookingConfirmation(confirmation)}
+          onBookingSuccess={(confirmation) => {
+            setBookingConfirmation(confirmation);
+            showToast(`Itinerary request ${confirmation.code} registered!`);
+          }}
         />
 
         {/* Verified Traveler Testimonials */}
@@ -192,7 +249,37 @@ export default function App() {
       <ConfirmationModal
         confirmation={bookingConfirmation}
         onClose={() => setBookingConfirmation(null)}
+        onOpenCustomerDashboard={() => setIsCustomerDashboardOpen(true)}
+      />
+
+      {/* Auth Modal for Customer & Admin */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        defaultRole={authDefaultRole}
+      />
+
+      {/* Customer Bookings Dashboard */}
+      <CustomerDashboard
+        isOpen={isCustomerDashboardOpen}
+        onClose={() => setIsCustomerDashboardOpen(false)}
+        onNewBookingClick={() => handleScrollToSection('planner')}
+      />
+
+      {/* Admin Management Dashboard */}
+      <AdminDashboard
+        isOpen={isAdminDashboardOpen}
+        onClose={() => setIsAdminDashboardOpen(false)}
+        onDestinationsUpdated={reloadDestinations}
       />
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <MainApp />
+    </AuthProvider>
   );
 }
