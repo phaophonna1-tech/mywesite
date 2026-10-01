@@ -2,11 +2,6 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Default deny all
-    match /{document=**} {
-      allow read, write: if false;
-    }
-
     // Helper functions
     function isValidId(id) {
       return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
@@ -60,21 +55,20 @@ service cloud.firestore {
       allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
       allow list: if isAdmin();
       
-      // Creating users: customers can create customer role, but ADMIN role can ONLY be created by super admin phaophonna.1@gmail.com
+      // Creating users: customers can create customer role, admin role only by super admin
       allow create: if isValidUser(request.resource.data) && (
         (request.resource.data.role == 'customer') ||
         (request.resource.data.role == 'admin' && isSuperAdminEmail())
       );
       
-      // Updates: user can update own profile, super admin can manage
+      // Updates: user can update own profile, admins can manage
       allow update: if (
         isAdmin() ||
         (isSignedIn() && request.auth.uid == userId && isValidUser(request.resource.data))
       );
       
-      // DELETION RULE: phaophonna.1@gmail.com CANNOT BE DELETED BY ANYONE!
-      // Other secondary admins can only be deleted by super admin phaophonna.1@gmail.com
-      allow delete: if isSuperAdminEmail() && resource.data.email != "phaophonna.1@gmail.com";
+      // Deletions: admins can delete customers/secondary admins, super admin protected
+      allow delete: if (isAdmin() || (isSignedIn() && request.auth.uid == userId)) && resource.data.email != "phaophonna.1@gmail.com";
     }
 
     // Admin Markers (managed exclusively by super admin phaophonna.1@gmail.com)
@@ -86,10 +80,7 @@ service cloud.firestore {
 
     // Verification Codes for OTP Email Verification & Self Password Reset
     match /verificationCodes/{codeId} {
-      allow read: if true;
-      allow create: if request.resource.data.keys().hasAll(['email', 'code', 'purpose', 'expiresAt']) &&
-                    request.resource.data.code.size() == 6;
-      allow update, delete: if true;
+      allow read, write: if true;
     }
 
     // Bookings collection
