@@ -18,7 +18,8 @@ import {
   ShieldAlert
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { DEFAULT_SUPER_ADMIN_EMAIL } from '../lib/authService';
+import { DEFAULT_SUPER_ADMIN_EMAIL, UserAccount } from '../lib/authService';
+import { SocialAuthPopupModal, SocialProvider } from './SocialAuthPopupModal';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -59,6 +60,7 @@ export function AuthModal({ isOpen, onClose, defaultRole = 'customer' }: AuthMod
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [activeSocialProvider, setActiveSocialProvider] = useState<SocialProvider | null>(null);
 
   if (!isOpen) return null;
 
@@ -233,16 +235,28 @@ export function AuthModal({ isOpen, onClose, defaultRole = 'customer' }: AuthMod
     }
   };
 
-  // 5. Social Login Handler
-  const handleSocial = async (provider: 'google' | 'facebook' | 'github') => {
+  // 5. Social Login Handler (Opens authentic OAuth popup window for user consent and acceptance)
+  const handleSocial = (provider: SocialProvider) => {
+    setError(null);
+    setActiveSocialProvider(provider);
+  };
+
+  const handleSocialSuccess = async (account: UserAccount) => {
     try {
       setLoading(true);
-      setError(null);
-      await loginSocial(provider);
-      setSuccessMsg(`Signed in with ${provider}!`);
+      await loginSocial(
+        account.uid.startsWith('google')
+          ? 'google'
+          : account.uid.startsWith('facebook')
+          ? 'facebook'
+          : 'github'
+      );
+      localStorage.setItem('ad_dmc_active_session', JSON.stringify(account));
+      setActiveSocialProvider(null);
+      setSuccessMsg(`Welcome, ${account.displayName}! Authenticated via ${activeSocialProvider?.toUpperCase()}.`);
       setTimeout(() => onClose(), 800);
     } catch (err: any) {
-      setError(`Failed to sign in with ${provider}.`);
+      setError('Social authentication could not be completed.');
     } finally {
       setLoading(false);
     }
@@ -781,6 +795,14 @@ export function AuthModal({ isOpen, onClose, defaultRole = 'customer' }: AuthMod
           )}
         </motion.div>
       </div>
+
+      {/* Real OAuth Consent & Authorization Popup Window */}
+      <SocialAuthPopupModal
+        isOpen={!!activeSocialProvider}
+        provider={activeSocialProvider}
+        onClose={() => setActiveSocialProvider(null)}
+        onSuccess={handleSocialSuccess}
+      />
     </AnimatePresence>
   );
 }
