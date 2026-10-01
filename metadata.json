@@ -1,0 +1,7 @@
+{
+  "name": "Wild Wonders Travel",
+  "description": "Premium travel agency landing page featuring immersive scroll animations, curated global destinations, and an interactive itinerary planner.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

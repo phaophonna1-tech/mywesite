@@ -1,0 +1,51 @@
+@import "tailwindcss";
+
+@theme {
+  --font-serif: "Playfair Display", Georgia, serif;
+  --font-sans: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* Custom smooth glow & backdrop utility */
+.glow-gold:hover {
+  box-shadow: 0 0 25px -4px rgba(245, 158, 11, 0.45);
+}
+
+.glow-card {
+  box-shadow: 0 16px 40px -12px rgba(0, 0, 0, 0.45);
+}
+
+/* Subtle float animation for polaroids */
+@keyframes subtle-float-1 {
+  0%, 100% { transform: translateY(0px) rotate(-6deg); }
+  50% { transform: translateY(-8px) rotate(-4deg); }
+}
+
+@keyframes subtle-float-2 {
+  0%, 100% { transform: translateY(0px) rotate(4deg); }
+  50% { transform: translateY(-10px) rotate(6deg); }
+}
+
+@keyframes subtle-float-3 {
+  0%, 100% { transform: translateY(0px) rotate(-2deg); }
+  50% { transform: translateY(-6px) rotate(-1deg); }
+}
+
+.animate-float-1 {
+  animation: subtle-float-1 6s ease-in-out infinite;
+}
+
+.animate-float-2 {
+  animation: subtle-float-2 7s ease-in-out infinite 0.7s;
+}
+
+.animate-float-3 {
+  animation: subtle-float-3 6.5s ease-in-out infinite 1.4s;
+}
+
